@@ -130,3 +130,7 @@
 #  description = "Map of autoscaling scheduled actions and their attributes"
 #  value       = module.ecs_service.autoscaling_scheduled_actions
 #}
+
+output "namespace_name" {
+  value = aws_service_discovery_http_namespace.this[*].arn
+}

@@ -18,6 +18,7 @@ locals {
   vpc_cidr       = "10.0.0.0/16"
   container_name = "apache"
   container_port = 80
+  namespace_name = ["ecsdemo-frontend", "ecsdemo-backend"]
   tags = {
     Name = local.name
   }
@@ -117,7 +118,17 @@ module "ecs" {
           readonly_root_filesystem = false
         },
       }
-
+      service_connect_configuration = {
+        namespace = aws_service_discovery_http_namespace.this[0].arn
+        service = {
+          client_alias = {
+            port     = local.container_port
+            dns_name = local.container_name
+          }
+          port_name      = local.container_name
+          discovery_name = local.container_name
+        }
+      }
       load_balancer = {
         service = {
           target_group_arn = module.alb.target_group_arns[0]
@@ -159,7 +170,7 @@ module "ecs" {
     },
 
     ##service1
-    ecs-demo2 = {
+    ecsdemo-backend = {
       cpu                      = 1024
       memory                   = 4096
       desired_count            = 2
@@ -193,9 +204,11 @@ module "ecs" {
           readonly_root_filesystem = false
         },
       }
-
+      service_connect_configuration = {
+        namespace = aws_service_discovery_http_namespace.this[1].arn
+      }
       load_balancer = {
-        grafana = {
+        nginx81 = {
           target_group_arn = module.alb.target_group_arns[1]
           container_name   = "nginx81"
           container_port   = 81
@@ -249,8 +262,9 @@ module "ecs" {
 ###############################################################################
 
 resource "aws_service_discovery_http_namespace" "this" {
-  name        = local.name
-  description = "CloudMap namespace for ${local.name}"
+  count       = length(local.namespace_name) > 0 ? length(local.namespace_name) : 0
+  name        = local.namespace_name[count.index]
+  description = "CloudMap namespace for ${local.namespace_name[count.index]}"
   tags        = local.tags
 }
 
