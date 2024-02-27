@@ -49,8 +49,8 @@ jobs:
           cd ./_example
           terraform plan
 
-#      - name: 'terraform apply'
-#        run: |
-#          cd ./_example
-#          terraform apply -auto-approve
+      - name: 'terraform apply'
+        run: |
+          cd ./_example
+          terraform apply -auto-approve
 ...
