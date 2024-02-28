@@ -97,8 +97,8 @@ module "ecs" {
     ecsdemo-frontend = {
       cpu                      = 1024
       memory                   = 4096
-      desired_count            = 2
-      autoscaling_min_capacity = 2
+      desired_count            = 3
+      autoscaling_min_capacity = 3
       autoscaling_max_capacity = 5
       # Container definition(s)
       container_definitions = {
@@ -169,7 +169,7 @@ module "ecs" {
       }
     },
 
-    ##service1
+    ##service2
     ecsdemo-backend = {
       cpu                      = 1024
       memory                   = 4096
