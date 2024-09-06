@@ -3,6 +3,8 @@ data "aws_region" "current" {}
 locals {
   is_not_windows = contains(["LINUX"], var.operating_system_family)
 
+  log_group_name = try(coalesce(var.cloudwatch_log_group_name, "/aws/ecs/${var.service}/${var.name}"), "")
+
   log_configuration = merge(
     { for k, v in {
       logDriver = "awslogs",
@@ -14,6 +16,14 @@ locals {
     } : k => v if var.enable_cloudwatch_logging },
     var.log_configuration
   )
+
+  linux_parameters = var.enable_execute_command ? merge({ "initProcessEnabled" : true }, var.linux_parameters) : merge({ "initProcessEnabled" : false }, var.linux_parameters)
+
+  health_check = length(var.health_check) > 0 ? merge({
+    interval = 30,
+    retries  = 3,
+    timeout  = 5
+  }, var.health_check) : null
 
   definition = {
     command                = length(var.command) > 0 ? var.command : null
@@ -30,12 +40,12 @@ locals {
     essential              = var.essential
     extraHosts             = local.is_not_windows && length(var.extra_hosts) > 0 ? var.extra_hosts : null
     firelensConfiguration  = length(var.firelens_configuration) > 0 ? var.firelens_configuration : null
-    healthCheck            = length(var.health_check) > 0 ? var.health_check : null
+    healthCheck            = local.health_check
     hostname               = var.hostname
     image                  = var.image
     interactive            = var.interactive
     links                  = local.is_not_windows && length(var.links) > 0 ? var.links : null
-    linuxParameters        = local.is_not_windows && length(var.linux_parameters) > 0 ? var.linux_parameters : null
+    linuxParameters        = local.is_not_windows && length(local.linux_parameters) > 0 ? local.linux_parameters : null
     logConfiguration       = length(local.log_configuration) > 0 ? local.log_configuration : null
     memory                 = var.memory
     memoryReservation      = var.memory_reservation

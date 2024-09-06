@@ -4,17 +4,11 @@ provider "aws" {
 
 data "aws_availability_zones" "available" {}
 
-terraform {
-  backend "s3" {
-    bucket = "terraform-s3-testing-ecs"
-    key    = "env/testing"
-    region = "eu-west-1"
-  }
-}
 
 locals {
   region         = "eu-west-1"
   name           = "test-ecs"
+  environment    = "qa"
   vpc_cidr       = "10.0.0.0/16"
   container_name = "apache"
   container_port = 80
@@ -26,30 +20,32 @@ locals {
 
 
 module "vpc" {
-  source     = "cypik/vpc/aws"
-  version    = "1.0.1"
-  name       = local.name
-  cidr_block = "10.0.0.0/16"
+  source      = "cypik/vpc/aws"
+  version     = "1.0.1"
+  name        = local.name
+  environment = local.environment
+  cidr_block  = "10.0.0.0/16"
 }
 
 module "subnets" {
-  source              = "cypik/subnet/aws"
-  version             = "1.0.2"
-  nat_gateway_enabled = true
-  single_nat_gateway  = true
-  availability_zones  = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
-  vpc_id              = module.vpc.id
-  type                = "public-private"
-  igw_id              = module.vpc.igw_id
-  cidr_block          = module.vpc.vpc_cidr_block
+  source             = "cypik/subnet/aws"
+  version            = "1.0.2"
+  name               = local.name
+  environment        = local.environment
+  availability_zones = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  type               = "public"
+  vpc_id             = module.vpc.id
+  cidr_block         = module.vpc.vpc_cidr_block
+  igw_id             = module.vpc.igw_id
 }
 
 
 module "security_group" {
-  source  = "cypik/security-group/aws"
-  version = "1.0.1"
-  name    = local.name
-  vpc_id  = module.vpc.id
+  source      = "cypik/security-group/aws"
+  version     = "1.0.1"
+  name        = local.name
+  environment = local.environment
+  vpc_id      = module.vpc.id
 
   ## INGRESS Rules
   new_sg_ingress_rules_with_cidr_blocks = [{
@@ -79,10 +75,10 @@ module "security_group" {
 
 
 module "ecs" {
-  source = "../"
+  source = "../.."
 
-  cluster_name = local.name
-
+  cluster_name   = local.name
+  create_cluster = true
   # Capacity provider
   fargate_capacity_providers = {
     FARGATE_SPOT = {
@@ -95,10 +91,10 @@ module "ecs" {
   ##service1
   services = {
     ecsdemo-frontend = {
-      cpu                      = 1024
-      memory                   = 4096
-      desired_count            = 3
-      autoscaling_min_capacity = 3
+      cpu                      = 256
+      memory                   = 512
+      desired_count            = 1
+      autoscaling_min_capacity = 1
       autoscaling_max_capacity = 5
       # Container definition(s)
       container_definitions = {
@@ -149,7 +145,8 @@ module "ecs" {
         }
       ]
 
-      subnet_ids = module.subnets.private_subnet_id
+      assign_public_ip = true
+      subnet_ids       = module.subnets.public_subnet_id
       security_group_rules = {
         alb_ingress_3000 = {
           type                     = "ingress"
@@ -168,89 +165,6 @@ module "ecs" {
         }
       }
     },
-
-    ##service2
-    ecsdemo-backend = {
-      cpu                      = 1024
-      memory                   = 4096
-      desired_count            = 2
-      autoscaling_min_capacity = 2
-      autoscaling_max_capacity = 5 # Container definition(s)
-      container_definitions = {
-        "nginx81" = {
-          image = "themaheshyadav/nginx81:latest"
-          port_mappings = [
-            {
-              name          = "nginx81"
-              containerPort = 81
-              protocol      = "tcp"
-            }
-          ]
-          # Example image used requires access to write to root filesystem
-          readonly_root_filesystem = false
-        },
-
-        "nginx82" = {
-          image = "themaheshyadav/nginx82:latest"
-          port_mappings = [
-            {
-              name          = "nginx82"
-              containerPort = 82
-              protocol      = "tcp"
-            }
-          ]
-
-          # Example image used requires access to write to root filesystem
-          readonly_root_filesystem = false
-        },
-      }
-      service_connect_configuration = {
-        namespace = aws_service_discovery_http_namespace.this[1].arn
-      }
-      load_balancer = {
-        nginx81 = {
-          target_group_arn = module.alb.target_group_arns[1]
-          container_name   = "nginx81"
-          container_port   = 81
-        },
-        nginx82 = {
-          target_group_arn = module.alb.target_group_arns[2]
-          container_name   = "nginx82"
-          container_port   = 82
-        }
-      }
-
-      tasks_iam_role_name        = "${local.name}-tasks2"
-      tasks_iam_role_description = "Example tasks IAM role2 for ${local.name}-2"
-      tasks_iam_role_policies = {
-        ReadOnlyAccess = "arn:aws:iam::aws:policy/ReadOnlyAccess"
-      }
-      tasks_iam_role_statements = [
-        {
-          actions   = ["s3:List*"]
-          resources = ["arn:aws:s3:::*"]
-        }
-      ]
-
-      subnet_ids = module.subnets.private_subnet_id
-      security_group_rules = {
-        alb_ingress = {
-          type                     = "ingress"
-          from_port                = 81
-          to_port                  = 82
-          protocol                 = "tcp"
-          description              = "Service port"
-          source_security_group_id = module.alb.security_group_id
-        },
-        egress_all = {
-          type        = "egress"
-          from_port   = 0
-          to_port     = 0
-          protocol    = "-1"
-          cidr_blocks = ["0.0.0.0/0"]
-        }
-      }
-    }
   }
 
   tags = local.tags
@@ -269,7 +183,7 @@ resource "aws_service_discovery_http_namespace" "this" {
 }
 
 module "alb" {
-  source = "./../modules/alb"
+  source = "../../modules/alb"
 
   name = "${local.name}-lb"
 
@@ -285,16 +199,6 @@ module "alb" {
       protocol           = "HTTP"
       target_group_index = 0
     },
-    {
-      port               = 81
-      protocol           = "HTTP"
-      target_group_index = 1
-    },
-    {
-      port               = 82
-      protocol           = "HTTP"
-      target_group_index = 2
-    }
   ]
 
   target_groups = [
@@ -304,18 +208,6 @@ module "alb" {
       backend_port     = local.container_port
       target_type      = "ip"
     },
-    {
-      name             = "nginx81"
-      backend_protocol = "HTTP"
-      backend_port     = 81
-      target_type      = "ip"
-    },
-    {
-      name             = "nginx82"
-      backend_protocol = "HTTP"
-      backend_port     = 82
-      target_type      = "ip"
-    }
   ]
 
   tags = local.tags

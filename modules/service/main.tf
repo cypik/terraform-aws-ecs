@@ -4,7 +4,6 @@ data "aws_caller_identity" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  dns_suffix = data.aws_partition.current.dns_suffix
   partition  = data.aws_partition.current.partition
   region     = data.aws_region.current.name
 }
@@ -25,10 +24,12 @@ locals {
     security_groups  = flatten(concat([try(aws_security_group.this[0].id, [])], var.security_group_ids))
     subnets          = var.subnet_ids
   }
+
+  create_service = var.create && var.create_service
 }
 
 resource "aws_ecs_service" "this" {
-  count = var.create && !var.ignore_task_definition_changes ? 1 : 0
+  count = local.create_service && !var.ignore_task_definition_changes ? 1 : 0
 
   dynamic "alarms" {
     for_each = length(var.alarms) > 0 ? [var.alarms] : []
@@ -96,7 +97,7 @@ resource "aws_ecs_service" "this" {
 
   dynamic "network_configuration" {
     # Set by task set if deployment controller is external
-    for_each = var.network_mode == "awsvpc" ? [{ for k, v in local.network_configuration : k => v if !local.is_external_deployment }] : []
+    for_each = var.network_mode == "awsvpc" && !local.is_external_deployment ? [local.network_configuration] : []
 
     content {
       assign_public_ip = network_configuration.value.assign_public_ip
@@ -192,7 +193,7 @@ resource "aws_ecs_service" "this" {
   wait_for_steady_state = var.wait_for_steady_state
 
   propagate_tags = var.propagate_tags
-  tags           = var.tags
+  tags           = merge(var.tags, var.service_tags)
 
   timeouts {
     create = try(var.timeouts.create, null)
@@ -200,7 +201,9 @@ resource "aws_ecs_service" "this" {
     delete = try(var.timeouts.delete, null)
   }
 
-  depends_on = [aws_iam_role_policy_attachment.service]
+  depends_on = [
+    aws_iam_role_policy_attachment.service
+  ]
 
   lifecycle {
     ignore_changes = [
@@ -214,7 +217,7 @@ resource "aws_ecs_service" "this" {
 ################################################################################
 
 resource "aws_ecs_service" "ignore_task_definition" {
-  count = var.create && var.ignore_task_definition_changes ? 1 : 0
+  count = local.create_service && var.ignore_task_definition_changes ? 1 : 0
 
   dynamic "alarms" {
     for_each = length(var.alarms) > 0 ? [var.alarms] : []
@@ -386,7 +389,9 @@ resource "aws_ecs_service" "ignore_task_definition" {
     delete = try(var.timeouts.delete, null)
   }
 
-  depends_on = [aws_iam_role_policy_attachment.service]
+  depends_on = [
+    aws_iam_role_policy_attachment.service
+  ]
 
   lifecycle {
     ignore_changes = [
@@ -419,7 +424,7 @@ data "aws_iam_policy_document" "service_assume" {
 
     principals {
       type        = "Service"
-      identifiers = ["ecs.${local.dns_suffix}"]
+      identifiers = ["ecs.amazonaws.com"]
     }
   }
 }
@@ -523,7 +528,7 @@ resource "aws_iam_role_policy_attachment" "service" {
 module "container_definition" {
   source = "../container-definition"
 
-  for_each = { for k, v in var.container_definitions : k => v if local.create_task_definition }
+  for_each = { for k, v in var.container_definitions : k => v if local.create_task_definition && try(v.create, true) }
 
   operating_system_family = try(var.runtime_platform.operating_system_family, "LINUX")
 
@@ -536,6 +541,7 @@ module "container_definition" {
   dns_servers              = try(each.value.dns_servers, var.container_definition_defaults.dns_servers, [])
   docker_labels            = try(each.value.docker_labels, var.container_definition_defaults.docker_labels, {})
   docker_security_options  = try(each.value.docker_security_options, var.container_definition_defaults.docker_security_options, [])
+  enable_execute_command   = try(each.value.enable_execute_command, var.container_definition_defaults.enable_execute_command, var.enable_execute_command)
   entrypoint               = try(each.value.entrypoint, var.container_definition_defaults.entrypoint, [])
   environment              = try(each.value.environment, var.container_definition_defaults.environment, [])
   environment_files        = try(each.value.environment_files, var.container_definition_defaults.environment_files, [])
@@ -732,6 +738,12 @@ resource "aws_ecs_task_definition" "this" {
 
   tags = merge(var.tags, var.task_tags)
 
+  depends_on = [
+    aws_iam_role_policy_attachment.tasks,
+    aws_iam_role_policy_attachment.task_exec,
+    aws_iam_role_policy_attachment.task_exec_additional,
+  ]
+
   lifecycle {
     create_before_destroy = true
   }
@@ -758,7 +770,7 @@ data "aws_iam_policy_document" "task_exec_assume" {
 
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.${local.dns_suffix}"]
+      identifiers = ["ecs-tasks.amazonaws.com"]
     }
   }
 }
@@ -772,6 +784,7 @@ resource "aws_iam_role" "task_exec" {
   description = coalesce(var.task_exec_iam_role_description, "Task execution role for ${local.task_exec_iam_role_name}")
 
   assume_role_policy    = data.aws_iam_policy_document.task_exec_assume[0].json
+  max_session_duration  = var.task_exec_iam_role_max_session_duration
   permissions_boundary  = var.task_exec_iam_role_permissions_boundary
   force_detach_policies = true
 
@@ -909,7 +922,7 @@ data "aws_iam_policy_document" "tasks_assume" {
 
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.${local.dns_suffix}"]
+      identifiers = ["ecs-tasks.amazonaws.com"]
     }
 
     # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html#create_task_iam_policy_and_role
@@ -950,7 +963,22 @@ resource "aws_iam_role_policy_attachment" "tasks" {
 }
 
 data "aws_iam_policy_document" "tasks" {
-  count = local.create_tasks_iam_role && length(var.tasks_iam_role_statements) > 0 ? 1 : 0
+  count = local.create_tasks_iam_role && (length(var.tasks_iam_role_statements) > 0 || var.enable_execute_command) ? 1 : 0
+
+  dynamic "statement" {
+    for_each = var.enable_execute_command ? [1] : []
+
+    content {
+      sid = "ECSExec"
+      actions = [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+      ]
+      resources = ["*"]
+    }
+  }
 
   dynamic "statement" {
     for_each = var.tasks_iam_role_statements
@@ -995,7 +1023,7 @@ data "aws_iam_policy_document" "tasks" {
 }
 
 resource "aws_iam_role_policy" "tasks" {
-  count = local.create_tasks_iam_role && length(var.tasks_iam_role_statements) > 0 ? 1 : 0
+  count = local.create_tasks_iam_role && (length(var.tasks_iam_role_statements) > 0 || var.enable_execute_command) ? 1 : 0
 
   name        = var.tasks_iam_role_use_name_prefix ? null : local.tasks_iam_role_name
   name_prefix = var.tasks_iam_role_use_name_prefix ? "${local.tasks_iam_role_name}-" : null
@@ -1171,9 +1199,9 @@ resource "aws_ecs_task_set" "ignore_task_definition" {
 ################################################################################
 
 locals {
-  enable_autoscaling = var.create && var.enable_autoscaling && !local.is_daemon
+  enable_autoscaling = local.create_service && var.enable_autoscaling && !local.is_daemon
 
-  cluster_name = element(split("/", var.cluster_arn), 1)
+  cluster_name = try(element(split("/", var.cluster_arn), 1), "")
 }
 
 resource "aws_appautoscaling_target" "this" {
@@ -1186,6 +1214,7 @@ resource "aws_appautoscaling_target" "this" {
   resource_id        = "service/${local.cluster_name}/${try(aws_ecs_service.this[0].name, aws_ecs_service.ignore_task_definition[0].name)}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
+  tags               = var.tags
 }
 
 resource "aws_appautoscaling_policy" "this" {
@@ -1302,7 +1331,11 @@ resource "aws_security_group" "this" {
   description = var.security_group_description
   vpc_id      = data.aws_subnet.this[0].vpc_id
 
-  tags = merge(var.tags, var.security_group_tags)
+  tags = merge(
+    var.tags,
+    { "Name" = local.security_group_name },
+    var.security_group_tags
+  )
 
   lifecycle {
     create_before_destroy = true

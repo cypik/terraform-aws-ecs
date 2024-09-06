@@ -14,6 +14,12 @@ variable "tags" {
 # Cluster
 ################################################################################
 
+variable "create_cluster" {
+  description = "Determines whether resources will be created (affects all resources)"
+  type        = bool
+  default     = false
+}
+
 variable "cluster_name" {
   description = "Name of the cluster (up to 255 letters, numbers, hyphens, and underscores)"
   type        = string
@@ -27,12 +33,14 @@ variable "cluster_configuration" {
 }
 
 variable "cluster_settings" {
-  description = "Configuration block(s) with cluster settings. For example, this can be used to enable CloudWatch Container Insights for a cluster"
-  type        = map(string)
-  default = {
-    name  = "containerInsights"
-    value = "enabled"
-  }
+  description = "List of configuration block(s) with cluster settings. For example, this can be used to enable CloudWatch Container Insights for a cluster"
+  type        = any
+  default = [
+    {
+      name  = "containerInsights"
+      value = "enabled"
+    }
+  ]
 }
 
 variable "cluster_service_connect_defaults" {
@@ -182,4 +190,10 @@ variable "services" {
   description = "Map of service definitions to create"
   type        = any
   default     = {}
+}
+
+variable "cluster_arn" {
+  description = "ARN of the ECS cluster where the resources will be provisioned"
+  type        = string
+  default     = ""
 }

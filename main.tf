@@ -5,10 +5,10 @@
 module "cluster" {
   source = "./modules/cluster"
 
-  create = var.create
+  create = var.create_cluster
 
   # Cluster
-  cluster_name                     = "my-ecs-cluster"
+  cluster_name                     = var.cluster_name
   cluster_configuration            = var.cluster_configuration
   cluster_settings                 = var.cluster_settings
   cluster_service_connect_defaults = var.cluster_service_connect_defaults
@@ -43,6 +43,8 @@ module "cluster" {
   tags = merge(var.tags, var.cluster_tags)
 }
 
+
+
 ################################################################################
 # Service(s)
 ################################################################################
@@ -52,13 +54,14 @@ module "service" {
 
   for_each = { for k, v in var.services : k => v if var.create }
 
-  create = try(each.value.create, true)
+  create         = try(each.value.create, true)
+  create_service = try(each.value.create_service, true)
 
   # Service
   ignore_task_definition_changes     = try(each.value.ignore_task_definition_changes, false)
   alarms                             = try(each.value.alarms, {})
   capacity_provider_strategy         = try(each.value.capacity_provider_strategy, {})
-  cluster_arn                        = module.cluster.arn
+  cluster_arn                        = var.create_cluster ? module.cluster.arn : var.cluster_arn
   deployment_circuit_breaker         = try(each.value.deployment_circuit_breaker, {})
   deployment_controller              = try(each.value.deployment_controller, {})
   deployment_maximum_percent         = try(each.value.deployment_maximum_percent, 200)
@@ -108,6 +111,7 @@ module "service" {
   ipc_mode                      = try(each.value.ipc_mode, null)
   memory                        = try(each.value.memory, 2048)
   network_mode                  = try(each.value.network_mode, "awsvpc")
+  pid_mode                      = try(each.value.pid_mode, null)
   proxy_configuration           = try(each.value.proxy_configuration, {})
   requires_compatibilities      = try(each.value.requires_compatibilities, ["FARGATE"])
   runtime_platform = try(each.value.runtime_platform, {
@@ -128,6 +132,7 @@ module "service" {
   task_exec_iam_role_permissions_boundary = try(each.value.task_exec_iam_role_permissions_boundary, null)
   task_exec_iam_role_tags                 = try(each.value.task_exec_iam_role_tags, {})
   task_exec_iam_role_policies             = try(each.value.task_exec_iam_role_policies, {})
+  task_exec_iam_role_max_session_duration = try(each.value.task_exec_iam_role_max_session_duration, null)
 
   # Task execution IAM role policy
   create_task_exec_policy  = try(each.value.create_task_exec_policy, true)
