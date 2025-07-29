@@ -1,4 +1,43 @@
-variable "create" {
+#Module      : LABEL
+#Description : Terraform label module variables
+variable "name" {
+  type        = string
+  default     = ""
+  description = "Name  (e.g. `app` or `cluster`)."
+}
+
+variable "repository" {
+  type        = string
+  default     = "https://github.com/cypik/terraform-aws-ecs"
+  description = "Terraform current module repo"
+}
+
+variable "environment" {
+  type        = string
+  default     = ""
+  description = "Environment (e.g. `prod`, `dev`, `staging`)."
+}
+
+variable "label_order" {
+  type        = list(any)
+  default     = ["name", "environment"]
+  description = "Label order, e.g. `name`,`application`."
+}
+
+variable "attributes" {
+  type        = list(any)
+  default     = []
+  description = "Additional attributes (e.g. `1`)."
+}
+
+variable "managedby" {
+  type        = string
+  default     = "hello@cypik.com"
+  description = "ManagedBy, eg 'cypik'."
+}
+
+
+variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
   default     = true
@@ -47,7 +86,7 @@ variable "cluster_service_connect_defaults" {
 # CloudWatch Log Group
 ################################################################################
 
-variable "create_cloudwatch_log_group" {
+variable "enable_cloudwatch_log_group" {
   description = "Determines whether a log group is created by this module for the cluster logs. If not, AWS will automatically create one if logging is enabled"
   type        = bool
   default     = true
@@ -56,7 +95,7 @@ variable "create_cloudwatch_log_group" {
 variable "cloudwatch_log_group_retention_in_days" {
   description = "Number of days to retain log events"
   type        = number
-  default     = 90
+  default     = 7
 }
 
 variable "cloudwatch_log_group_kms_key_id" {
@@ -98,7 +137,7 @@ variable "autoscaling_capacity_providers" {
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 ################################################################################
 
-variable "create_task_exec_iam_role" {
+variable "enable_task_exec_iam_role" {
   description = "Determines whether the ECS task definition IAM role should be created"
   type        = bool
   default     = false
@@ -146,7 +185,7 @@ variable "task_exec_iam_role_policies" {
   default     = {}
 }
 
-variable "create_task_exec_policy" {
+variable "enable_task_exec_policy" {
   description = "Determines whether the ECS task definition IAM policy should be created. This includes permissions included in AmazonECSTaskExecutionRolePolicy as well as access to secrets and SSM parameters"
   type        = bool
   default     = true

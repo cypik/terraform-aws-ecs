@@ -1,10 +1,46 @@
-variable "create" {
+variable "name" {
+  type        = string
+  default     = ""
+  description = "Name  (e.g. `app` or `cluster`)."
+}
+
+variable "repository" {
+  type        = string
+  default     = "https://github.com/cypik/terraform-aws-ecs"
+  description = "Terraform current module repo"
+}
+
+variable "environment" {
+  type        = string
+  default     = ""
+  description = "Environment (e.g. `prod`, `dev`, `staging`)."
+}
+
+variable "label_order" {
+  type        = list(any)
+  default     = ["name", "environment"]
+  description = "Label order, e.g. `name`,`application`."
+}
+
+variable "attributes" {
+  type        = list(any)
+  default     = []
+  description = "Additional attributes (e.g. `1`)."
+}
+
+variable "managedby" {
+  type        = string
+  default     = "hello@cypik.com"
+  description = "ManagedBy, eg 'cypik'."
+}
+
+variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
   default     = true
 }
 
-variable "create_service" {
+variable "enable_service" {
   description = "Determines whether service resource will be created (set to `false` in case you want to create task definition only)"
   type        = bool
   default     = true
@@ -110,12 +146,6 @@ variable "load_balancer" {
   default     = {}
 }
 
-variable "name" {
-  description = "Name of the service (up to 255 letters, numbers, hyphens, and underscores)"
-  type        = string
-  default     = null
-}
-
 variable "assign_public_ip" {
   description = "Assign a public IP address to the ENI (Fargate launch type only)"
   type        = bool
@@ -204,7 +234,7 @@ variable "service_tags" {
 # Service - IAM Role
 ################################################################################
 
-variable "create_iam_role" {
+variable "enable_iam_role" {
   description = "Determines whether the ECS service IAM role should be created"
   type        = bool
   default     = true
@@ -262,7 +292,7 @@ variable "iam_role_statements" {
 # Task Definition
 ################################################################################
 
-variable "create_task_definition" {
+variable "enable_task_definition" {
   description = "Determines whether to create a task definition or use existing/provided"
   type        = bool
   default     = true
@@ -384,7 +414,7 @@ variable "task_tags" {
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 ################################################################################
 
-variable "create_task_exec_iam_role" {
+variable "enable_task_exec_iam_role" {
   description = "Determines whether the ECS task definition IAM role should be created"
   type        = bool
   default     = true
@@ -444,7 +474,7 @@ variable "task_exec_iam_role_max_session_duration" {
   default     = null
 }
 
-variable "create_task_exec_policy" {
+variable "enable_task_exec_policy" {
   description = "Determines whether the ECS task definition IAM policy should be created. This includes permissions included in AmazonECSTaskExecutionRolePolicy as well as access to secrets and SSM parameters"
   type        = bool
   default     = true
@@ -473,7 +503,7 @@ variable "task_exec_iam_statements" {
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html
 ################################################################################
 
-variable "create_tasks_iam_role" {
+variable "enable_tasks_iam_role" {
   description = "Determines whether the ECS tasks IAM role should be created"
   type        = bool
   default     = true
@@ -503,11 +533,11 @@ variable "tasks_iam_role_path" {
   default     = null
 }
 
-variable "tasks_iam_role_description" {
-  description = "Description of the role"
-  type        = string
-  default     = null
-}
+# variable "tasks_iam_role_description" {
+#   description = "Description of the role"
+#   type        = string
+#   default     = "tasks IAM role"
+# }
 
 variable "tasks_iam_role_permissions_boundary" {
   description = "ARN of the policy that is used to set the permissions boundary for the IAM role"
@@ -524,7 +554,7 @@ variable "tasks_iam_role_tags" {
 variable "tasks_iam_role_policies" {
   description = "Map of IAM role policy ARNs to attach to the IAM role"
   type        = map(string)
-  default     = {}
+  default     = { ReadOnlyAccess = "arn:aws:iam::aws:policy/ReadOnlyAccess" }
 }
 
 variable "tasks_iam_role_statements" {
@@ -624,7 +654,7 @@ variable "autoscaling_scheduled_actions" {
 # Security Group
 ################################################################################
 
-variable "create_security_group" {
+variable "enable_security_group" {
   description = "Determines if a security group is created"
   type        = bool
   default     = true
@@ -658,4 +688,9 @@ variable "security_group_tags" {
   description = "A map of additional tags to add to the security group created"
   type        = map(string)
   default     = {}
+}
+
+variable "namespace_name" {
+  type    = list(any)
+  default = []
 }

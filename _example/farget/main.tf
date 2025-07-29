@@ -2,17 +2,12 @@ provider "aws" {
   region = local.region
 }
 
-data "aws_availability_zones" "available" {}
-
-
 locals {
-  region         = "eu-west-1"
-  name           = "test-ecs"
-  environment    = "qa"
-  vpc_cidr       = "10.0.0.0/16"
+  region         = "eu-west-2"
+  name           = "test"
+  environment    = "demo"
   container_name = "apache"
   container_port = 80
-  namespace_name = ["ecsdemo-frontend", "ecsdemo-backend"]
   tags = {
     Name = local.name
   }
@@ -21,7 +16,7 @@ locals {
 
 module "vpc" {
   source      = "cypik/vpc/aws"
-  version     = "1.0.1"
+  version     = "1.0.3"
   name        = local.name
   environment = local.environment
   cidr_block  = "10.0.0.0/16"
@@ -32,9 +27,9 @@ module "subnets" {
   version            = "1.0.2"
   name               = local.name
   environment        = local.environment
-  availability_zones = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  availability_zones = ["eu-west-2a", "eu-west-2b", "eu-west-2c"]
   type               = "public"
-  vpc_id             = module.vpc.id
+  vpc_id             = module.vpc.vpc_id
   cidr_block         = module.vpc.vpc_cidr_block
   igw_id             = module.vpc.igw_id
 }
@@ -45,7 +40,7 @@ module "security_group" {
   version     = "1.0.1"
   name        = local.name
   environment = local.environment
-  vpc_id      = module.vpc.id
+  vpc_id      = module.vpc.vpc_id
 
   ## INGRESS Rules
   new_sg_ingress_rules_with_cidr_blocks = [{
@@ -69,16 +64,12 @@ module "security_group" {
 
   ]
 }
-###############################################################################
-##########Cluster
-###############################################################################
-
 
 module "ecs" {
   source = "../.."
 
-  cluster_name   = local.name
-  create_cluster = true
+  name        = local.name
+  environment = local.environment
   # Capacity provider
   fargate_capacity_providers = {
     FARGATE_SPOT = {
@@ -90,7 +81,7 @@ module "ecs" {
 
   ##service1
   services = {
-    ecsdemo-frontend = {
+    ecsdemo-frontend2 = { ## service name
       cpu                      = 256
       memory                   = 512
       desired_count            = 1
@@ -110,12 +101,10 @@ module "ecs" {
 
           entry_point = ["/usr/sbin/apache2", "-D", "FOREGROUND"]
 
-          # Example image used requires access to write to root filesystem
           readonly_root_filesystem = false
         },
       }
       service_connect_configuration = {
-        namespace = aws_service_discovery_http_namespace.this[0].arn
         service = {
           client_alias = {
             port     = local.container_port
@@ -133,11 +122,6 @@ module "ecs" {
         }
       }
 
-      tasks_iam_role_name        = "${local.name}-tasks"
-      tasks_iam_role_description = "Example tasks IAM role for ${local.name}"
-      tasks_iam_role_policies = {
-        ReadOnlyAccess = "arn:aws:iam::aws:policy/ReadOnlyAccess"
-      }
       tasks_iam_role_statements = [
         {
           actions   = ["s3:List*"]
@@ -148,20 +132,13 @@ module "ecs" {
       assign_public_ip = true
       subnet_ids       = module.subnets.public_subnet_id
       security_group_rules = {
-        alb_ingress_3000 = {
+        alb_ingress = {
           type                     = "ingress"
           from_port                = local.container_port
           to_port                  = local.container_port
           protocol                 = "tcp"
           description              = "Service port"
           source_security_group_id = module.alb.security_group_id
-        }
-        egress_all = {
-          type        = "egress"
-          from_port   = 0
-          to_port     = 0
-          protocol    = "-1"
-          cidr_blocks = ["0.0.0.0/0"]
         }
       }
     },
@@ -171,44 +148,65 @@ module "ecs" {
 }
 
 
-###############################################################################
-###Service
-###############################################################################
 
-resource "aws_service_discovery_http_namespace" "this" {
-  count       = length(local.namespace_name) > 0 ? length(local.namespace_name) : 0
-  name        = local.namespace_name[count.index]
-  description = "CloudMap namespace for ${local.namespace_name[count.index]}"
-  tags        = local.tags
-}
 
 module "alb" {
-  source = "../../modules/alb"
-
-  name = "${local.name}-lb"
+  source  = "cypik/lb/aws"
+  version = "1.0.4"
+  name    = "${local.name}-lb"
 
   load_balancer_type = "application"
-
-  vpc_id          = module.vpc.id
-  subnets         = module.subnets.public_subnet_id
-  security_groups = [module.security_group.security_group_id]
+  subnets            = module.subnets.public_subnet_id
+  vpc_id             = module.vpc.vpc_id
+  allowed_ip         = ["0.0.0.0/0"]
+  allowed_ports      = [80]
+  https_enabled      = false
+  http_enabled       = true
+  https_port         = 443
+  http_listener_type = "forward"
+  target_group_port  = 80
 
   http_tcp_listeners = [
     {
       port               = 80
-      protocol           = "HTTP"
+      protocol           = "TCP"
       target_group_index = 0
     },
   ]
+  #  https_listeners = [
+  #    {
+  #      port               = 443
+  #      protocol           = "TLS"
+  #      target_group_index = 0
+  #      certificate_arn    = ""
+  #    },
+  ##    {
+  ##      port               = 84
+  ##      protocol           = "TLS"
+  ##      target_group_index = 0
+  ##      certificate_arn    = ""
+  ##    },
+  #  ]
 
   target_groups = [
     {
-      name             = local.name
-      backend_protocol = "HTTP"
-      backend_port     = local.container_port
-      target_type      = "ip"
-    },
-  ]
+      backend_protocol     = "HTTP"
+      backend_port         = 80
+      target_type          = "ip"
+      deregistration_delay = 300
+      health_check = {
+        enabled             = true
+        target_type         = "ip"
+        interval            = 30
+        path                = "/"
+        port                = "traffic-port"
+        healthy_threshold   = 3
+        unhealthy_threshold = 3
+        timeout             = 10
+        protocol            = "HTTP"
+        matcher             = "200-399"
+      }
 
-  tags = local.tags
+    }
+  ]
 }

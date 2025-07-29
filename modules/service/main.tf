@@ -2,10 +2,10 @@ data "aws_region" "current" {}
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 
+
 locals {
   account_id = data.aws_caller_identity.current.account_id
   partition  = data.aws_partition.current.partition
-  region     = data.aws_region.current.name
 }
 
 ################################################################################
@@ -21,16 +21,30 @@ locals {
   # Flattened `network_configuration`
   network_configuration = {
     assign_public_ip = var.assign_public_ip
-    security_groups  = flatten(concat([try(aws_security_group.this[0].id, [])], var.security_group_ids))
+    security_groups  = flatten(concat([try(aws_security_group.main[0].id, [])], var.security_group_ids))
     subnets          = var.subnet_ids
   }
 
-  create_service = var.create && var.create_service
+  enable_service = var.enable && var.enable_service
 }
 
-resource "aws_ecs_service" "this" {
-  count = local.create_service && !var.ignore_task_definition_changes ? 1 : 0
+locals {
+  service_connect_enabled = length(var.service_connect_configuration) > 0
+  # Use service name as namespace name when service connect is enabled and no explicit namespace is provided
+  namespace_name = local.service_connect_enabled && lookup(var.service_connect_configuration, "namespace", null) == null ? [var.name] : []
+}
 
+resource "aws_service_discovery_http_namespace" "this" {
+  count       = length(local.namespace_name) > 0 ? 1 : 0
+  name        = var.name
+  description = "CloudMap namespace for ${var.name}"
+  tags        = merge(var.tags, var.service_tags)
+}
+
+resource "aws_ecs_service" "main" {
+  count = local.enable_service && !var.ignore_task_definition_changes ? 1 : 0
+
+  name = var.name
   dynamic "alarms" {
     for_each = length(var.alarms) > 0 ? [var.alarms] : []
 
@@ -93,7 +107,6 @@ resource "aws_ecs_service" "this" {
     }
   }
 
-  name = var.name
 
   dynamic "network_configuration" {
     # Set by task set if deployment controller is external
@@ -152,7 +165,10 @@ resource "aws_ecs_service" "this" {
         }
       }
 
-      namespace = lookup(service_connect_configuration.value, "namespace", null)
+      namespace = coalesce(
+        lookup(service_connect_configuration.value, "namespace", null),
+        length(aws_service_discovery_http_namespace.this) > 0 ? aws_service_discovery_http_namespace.this[0].arn : null
+      )
 
       dynamic "service" {
         for_each = try([service_connect_configuration.value.service], [])
@@ -217,7 +233,9 @@ resource "aws_ecs_service" "this" {
 ################################################################################
 
 resource "aws_ecs_service" "ignore_task_definition" {
-  count = local.create_service && var.ignore_task_definition_changes ? 1 : 0
+  count = local.enable_service && var.ignore_task_definition_changes ? 1 : 0
+
+  name = format("%s-ecs-service", var.name)
 
   dynamic "alarms" {
     for_each = length(var.alarms) > 0 ? [var.alarms] : []
@@ -281,7 +299,6 @@ resource "aws_ecs_service" "ignore_task_definition" {
     }
   }
 
-  name = var.name
 
   dynamic "network_configuration" {
     # Set by task set if deployment controller is external
@@ -340,7 +357,10 @@ resource "aws_ecs_service" "ignore_task_definition" {
         }
       }
 
-      namespace = lookup(service_connect_configuration.value, "namespace", null)
+      namespace = coalesce(
+        lookup(service_connect_configuration.value, "namespace", null),
+        length(aws_service_discovery_http_namespace.this) > 0 ? aws_service_discovery_http_namespace.this[0].arn : null
+      )
 
       dynamic "service" {
         for_each = try([service_connect_configuration.value.service], [])
@@ -409,14 +429,14 @@ resource "aws_ecs_service" "ignore_task_definition" {
 locals {
   # Role is not required if task definition uses `awsvpc` network mode or if a load balancer is not used
   needs_iam_role  = var.network_mode != "awsvpc" && length(var.load_balancer) > 0
-  create_iam_role = var.create && var.create_iam_role && local.needs_iam_role
+  enable_iam_role = var.enable && var.enable_iam_role && local.needs_iam_role
   iam_role_arn    = local.needs_iam_role ? try(aws_iam_role.service[0].arn, var.iam_role_arn) : null
 
-  iam_role_name = try(coalesce(var.iam_role_name, var.name), "")
+  iam_role_name = format("%s-ecs-service-iam-role", var.name)
 }
 
 data "aws_iam_policy_document" "service_assume" {
-  count = local.create_iam_role ? 1 : 0
+  count = local.enable_iam_role ? 1 : 0
 
   statement {
     sid     = "ECSServiceAssumeRole"
@@ -430,7 +450,7 @@ data "aws_iam_policy_document" "service_assume" {
 }
 
 resource "aws_iam_role" "service" {
-  count = local.create_iam_role ? 1 : 0
+  count = local.enable_iam_role ? 1 : 0
 
   name        = var.iam_role_use_name_prefix ? null : local.iam_role_name
   name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null
@@ -445,7 +465,7 @@ resource "aws_iam_role" "service" {
 }
 
 data "aws_iam_policy_document" "service" {
-  count = local.create_iam_role ? 1 : 0
+  count = local.enable_iam_role ? 1 : 0
 
   statement {
     sid       = "ECSService"
@@ -504,7 +524,7 @@ data "aws_iam_policy_document" "service" {
 }
 
 resource "aws_iam_policy" "service" {
-  count = local.create_iam_role ? 1 : 0
+  count = local.enable_iam_role ? 1 : 0
 
   name        = var.iam_role_use_name_prefix ? null : local.iam_role_name
   name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null
@@ -515,7 +535,7 @@ resource "aws_iam_policy" "service" {
 }
 
 resource "aws_iam_role_policy_attachment" "service" {
-  count = local.create_iam_role ? 1 : 0
+  count = local.enable_iam_role ? 1 : 0
 
   role       = aws_iam_role.service[0].name
   policy_arn = aws_iam_policy.service[0].arn
@@ -528,22 +548,22 @@ resource "aws_iam_role_policy_attachment" "service" {
 module "container_definition" {
   source = "../container-definition"
 
-  for_each = { for k, v in var.container_definitions : k => v if local.create_task_definition && try(v.create, true) }
+  for_each = { for k, v in var.container_definitions : k => v if local.enable_task_definition && try(v.enable, true) }
 
   operating_system_family = try(var.runtime_platform.operating_system_family, "LINUX")
 
   # Container Definition
-  command                  = try(each.value.command, var.container_definition_defaults.command, [])
-  cpu                      = try(each.value.cpu, var.container_definition_defaults.cpu, null)
-  dependencies             = try(each.value.dependencies, var.container_definition_defaults.dependencies, []) # depends_on is a reserved word
-  disable_networking       = try(each.value.disable_networking, var.container_definition_defaults.disable_networking, null)
-  dns_search_domains       = try(each.value.dns_search_domains, var.container_definition_defaults.dns_search_domains, [])
-  dns_servers              = try(each.value.dns_servers, var.container_definition_defaults.dns_servers, [])
-  docker_labels            = try(each.value.docker_labels, var.container_definition_defaults.docker_labels, {})
-  docker_security_options  = try(each.value.docker_security_options, var.container_definition_defaults.docker_security_options, [])
-  enable_execute_command   = try(each.value.enable_execute_command, var.container_definition_defaults.enable_execute_command, var.enable_execute_command)
-  entrypoint               = try(each.value.entrypoint, var.container_definition_defaults.entrypoint, [])
-  environment              = try(each.value.environment, var.container_definition_defaults.environment, [])
+  command                 = try(each.value.command, var.container_definition_defaults.command, [])
+  cpu                     = try(each.value.cpu, var.container_definition_defaults.cpu, null)
+  dependencies            = try(each.value.dependencies, var.container_definition_defaults.dependencies, []) # depends_on is a reserved word
+  disable_networking      = try(each.value.disable_networking, var.container_definition_defaults.disable_networking, null)
+  dns_search_domains      = try(each.value.dns_search_domains, var.container_definition_defaults.dns_search_domains, [])
+  dns_servers             = try(each.value.dns_servers, var.container_definition_defaults.dns_servers, [])
+  docker_labels           = try(each.value.docker_labels, var.container_definition_defaults.docker_labels, {})
+  docker_security_options = try(each.value.docker_security_options, var.container_definition_defaults.docker_security_options, [])
+  enable_execute_command  = try(each.value.enable_execute_command, var.container_definition_defaults.enable_execute_command, var.enable_execute_command)
+  entrypoint              = try(each.value.entrypoint, var.container_definition_defaults.entrypoint, [])
+  # environment              = try(each.value.environment, var.container_definition_defaults.environment, [])
   environment_files        = try(each.value.environment_files, var.container_definition_defaults.environment_files, [])
   essential                = try(each.value.essential, var.container_definition_defaults.essential, null)
   extra_hosts              = try(each.value.extra_hosts, var.container_definition_defaults.extra_hosts, [])
@@ -575,10 +595,10 @@ module "container_definition" {
   working_directory        = try(each.value.working_directory, var.container_definition_defaults.working_directory, null)
 
   # CloudWatch Log Group
-  service                                = var.name
+  # service                                = var.name
   enable_cloudwatch_logging              = try(each.value.enable_cloudwatch_logging, var.container_definition_defaults.enable_cloudwatch_logging, true)
-  create_cloudwatch_log_group            = try(each.value.create_cloudwatch_log_group, var.container_definition_defaults.create_cloudwatch_log_group, true)
-  cloudwatch_log_group_retention_in_days = try(each.value.cloudwatch_log_group_retention_in_days, var.container_definition_defaults.cloudwatch_log_group_retention_in_days, 14)
+  enable_cloudwatch_log_group            = try(each.value.enable_cloudwatch_log_group, var.container_definition_defaults.enable_cloudwatch_log_group, true)
+  cloudwatch_log_group_retention_in_days = try(each.value.cloudwatch_log_group_retention_in_days, var.container_definition_defaults.cloudwatch_log_group_retention_in_days, 7)
   cloudwatch_log_group_kms_key_id        = try(each.value.cloudwatch_log_group_kms_key_id, var.container_definition_defaults.cloudwatch_log_group_kms_key_id, null)
 
   tags = var.tags
@@ -589,31 +609,31 @@ module "container_definition" {
 ################################################################################
 
 locals {
-  create_task_definition = var.create && var.create_task_definition
+  enable_task_definition = var.enable && var.enable_task_definition
 
   # This allows us to query both the existing as well as Terraform's state and get
   # and get the max version of either source, useful for when external resources
   # update the container definition
-  max_task_def_revision = local.create_task_definition ? max(aws_ecs_task_definition.this[0].revision, data.aws_ecs_task_definition.this[0].revision) : 0
-  task_definition       = local.create_task_definition ? "${aws_ecs_task_definition.this[0].family}:${local.max_task_def_revision}" : var.task_definition_arn
+  max_task_def_revision = local.enable_task_definition ? max(aws_ecs_task_definition.main[0].revision, data.aws_ecs_task_definition.main[0].revision) : 0
+  task_definition       = local.enable_task_definition ? "${aws_ecs_task_definition.main[0].family}:${local.max_task_def_revision}" : var.task_definition_arn
 }
 
 # This allows us to query both the existing as well as Terraform's state and get
 # and get the max version of either source, useful for when external resources
 # update the container definition
-data "aws_ecs_task_definition" "this" {
-  count = local.create_task_definition ? 1 : 0
+data "aws_ecs_task_definition" "main" {
+  count = local.enable_task_definition ? 1 : 0
 
-  task_definition = aws_ecs_task_definition.this[0].family
+  task_definition = aws_ecs_task_definition.main[0].family
 
   depends_on = [
     # Needs to exist first on first deployment
-    aws_ecs_task_definition.this
+    aws_ecs_task_definition.main
   ]
 }
 
-resource "aws_ecs_task_definition" "this" {
-  count = local.create_task_definition ? 1 : 0
+resource "aws_ecs_task_definition" "main" {
+  count = local.enable_task_definition ? 1 : 0
 
   # Convert map of maps to array of maps before JSON encoding
   container_definitions = jsonencode([for k, v in module.container_definition : v.container_definition])
@@ -630,14 +650,14 @@ resource "aws_ecs_task_definition" "this" {
   execution_role_arn = try(aws_iam_role.task_exec[0].arn, var.task_exec_iam_role_arn)
   family             = coalesce(var.family, var.name)
 
-  dynamic "inference_accelerator" {
-    for_each = var.inference_accelerator
-
-    content {
-      device_name = inference_accelerator.value.device_name
-      device_type = inference_accelerator.value.device_type
-    }
-  }
+  # dynamic "inference_accelerator" {
+  #   for_each = var.inference_accelerator
+  #
+  #   content {
+  #     device_name = inference_accelerator.value.device_name
+  #     device_type = inference_accelerator.value.device_type
+  #   }
+  # }
 
   ipc_mode     = var.ipc_mode
   memory       = var.memory
@@ -757,12 +777,12 @@ resource "aws_ecs_task_definition" "this" {
 locals {
   task_exec_iam_role_name = try(coalesce(var.task_exec_iam_role_name, var.name), "")
 
-  create_task_exec_iam_role = local.create_task_definition && var.create_task_exec_iam_role
-  create_task_exec_policy   = local.create_task_exec_iam_role && var.create_task_exec_policy
+  enable_task_exec_iam_role = local.enable_task_definition && var.enable_task_exec_iam_role
+  enable_task_exec_policy   = local.enable_task_exec_iam_role && var.enable_task_exec_policy
 }
 
 data "aws_iam_policy_document" "task_exec_assume" {
-  count = local.create_task_exec_iam_role ? 1 : 0
+  count = local.enable_task_exec_iam_role ? 1 : 0
 
   statement {
     sid     = "ECSTaskExecutionAssumeRole"
@@ -776,7 +796,7 @@ data "aws_iam_policy_document" "task_exec_assume" {
 }
 
 resource "aws_iam_role" "task_exec" {
-  count = local.create_task_exec_iam_role ? 1 : 0
+  count = local.enable_task_exec_iam_role ? 1 : 0
 
   name        = var.task_exec_iam_role_use_name_prefix ? null : local.task_exec_iam_role_name
   name_prefix = var.task_exec_iam_role_use_name_prefix ? "${local.task_exec_iam_role_name}-" : null
@@ -792,14 +812,14 @@ resource "aws_iam_role" "task_exec" {
 }
 
 resource "aws_iam_role_policy_attachment" "task_exec_additional" {
-  for_each = { for k, v in var.task_exec_iam_role_policies : k => v if local.create_task_exec_iam_role }
+  for_each = { for k, v in var.task_exec_iam_role_policies : k => v if local.enable_task_exec_iam_role }
 
   role       = aws_iam_role.task_exec[0].name
   policy_arn = each.value
 }
 
 data "aws_iam_policy_document" "task_exec" {
-  count = local.create_task_exec_policy ? 1 : 0
+  count = local.enable_task_exec_policy ? 1 : 0
 
   # Pulled from AmazonECSTaskExecutionRolePolicy
   statement {
@@ -886,7 +906,7 @@ data "aws_iam_policy_document" "task_exec" {
 }
 
 resource "aws_iam_policy" "task_exec" {
-  count = local.create_task_exec_policy ? 1 : 0
+  count = local.enable_task_exec_policy ? 1 : 0
 
   name        = var.task_exec_iam_role_use_name_prefix ? null : local.task_exec_iam_role_name
   name_prefix = var.task_exec_iam_role_use_name_prefix ? "${local.task_exec_iam_role_name}-" : null
@@ -897,7 +917,7 @@ resource "aws_iam_policy" "task_exec" {
 }
 
 resource "aws_iam_role_policy_attachment" "task_exec" {
-  count = local.create_task_exec_policy ? 1 : 0
+  count = local.enable_task_exec_policy ? 1 : 0
 
   role       = aws_iam_role.task_exec[0].name
   policy_arn = aws_iam_policy.task_exec[0].arn
@@ -909,12 +929,12 @@ resource "aws_iam_role_policy_attachment" "task_exec" {
 ################################################################################
 
 locals {
-  tasks_iam_role_name   = try(coalesce(var.tasks_iam_role_name, var.name), "")
-  create_tasks_iam_role = local.create_task_definition && var.create_tasks_iam_role
+  tasks_iam_role_name   = "${var.name}-tasks-iam-role"
+  enable_tasks_iam_role = local.enable_task_definition && var.enable_tasks_iam_role
 }
 
 data "aws_iam_policy_document" "tasks_assume" {
-  count = local.create_tasks_iam_role ? 1 : 0
+  count = local.enable_tasks_iam_role ? 1 : 0
 
   statement {
     sid     = "ECSTasksAssumeRole"
@@ -929,7 +949,7 @@ data "aws_iam_policy_document" "tasks_assume" {
     condition {
       test     = "ArnLike"
       variable = "aws:SourceArn"
-      values   = ["arn:${local.partition}:ecs:${local.region}:${local.account_id}:*"]
+      values   = ["arn:${local.partition}:ecs:${data.aws_region.current.name}:${local.account_id}:*"]
     }
 
     condition {
@@ -941,12 +961,12 @@ data "aws_iam_policy_document" "tasks_assume" {
 }
 
 resource "aws_iam_role" "tasks" {
-  count = local.create_tasks_iam_role ? 1 : 0
+  count = local.enable_tasks_iam_role ? 1 : 0
 
   name        = var.tasks_iam_role_use_name_prefix ? null : local.tasks_iam_role_name
-  name_prefix = var.tasks_iam_role_use_name_prefix ? "${local.tasks_iam_role_name}-" : null
+  name_prefix = var.tasks_iam_role_use_name_prefix ? "${local.tasks_iam_role_name}" : null
   path        = var.tasks_iam_role_path
-  description = var.tasks_iam_role_description
+  description = "tasks IAM role for ${var.name}"
 
   assume_role_policy    = data.aws_iam_policy_document.tasks_assume[0].json
   permissions_boundary  = var.tasks_iam_role_permissions_boundary
@@ -956,14 +976,14 @@ resource "aws_iam_role" "tasks" {
 }
 
 resource "aws_iam_role_policy_attachment" "tasks" {
-  for_each = { for k, v in var.tasks_iam_role_policies : k => v if local.create_tasks_iam_role }
+  for_each = { for k, v in var.tasks_iam_role_policies : k => v if local.enable_tasks_iam_role }
 
   role       = aws_iam_role.tasks[0].name
   policy_arn = each.value
 }
 
 data "aws_iam_policy_document" "tasks" {
-  count = local.create_tasks_iam_role && (length(var.tasks_iam_role_statements) > 0 || var.enable_execute_command) ? 1 : 0
+  count = local.enable_tasks_iam_role && (length(var.tasks_iam_role_statements) > 0 || var.enable_execute_command) ? 1 : 0
 
   dynamic "statement" {
     for_each = var.enable_execute_command ? [1] : []
@@ -1023,10 +1043,10 @@ data "aws_iam_policy_document" "tasks" {
 }
 
 resource "aws_iam_role_policy" "tasks" {
-  count = local.create_tasks_iam_role && (length(var.tasks_iam_role_statements) > 0 || var.enable_execute_command) ? 1 : 0
+  count = local.enable_tasks_iam_role && (length(var.tasks_iam_role_statements) > 0 || var.enable_execute_command) ? 1 : 0
 
   name        = var.tasks_iam_role_use_name_prefix ? null : local.tasks_iam_role_name
-  name_prefix = var.tasks_iam_role_use_name_prefix ? "${local.tasks_iam_role_name}-" : null
+  name_prefix = var.tasks_iam_role_use_name_prefix ? "${local.tasks_iam_role_name}-policy" : null
   policy      = data.aws_iam_policy_document.tasks[0].json
   role        = aws_iam_role.tasks[0].id
 }
@@ -1035,11 +1055,11 @@ resource "aws_iam_role_policy" "tasks" {
 # Task Set
 ################################################################################
 
-resource "aws_ecs_task_set" "this" {
+resource "aws_ecs_task_set" "main" {
   # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskset.html
-  count = local.create_task_definition && local.is_external_deployment && !var.ignore_task_definition_changes ? 1 : 0
+  count = local.enable_task_definition && local.is_external_deployment && !var.ignore_task_definition_changes ? 1 : 0
 
-  service         = try(aws_ecs_service.this[0].id, aws_ecs_service.ignore_task_definition[0].id)
+  service         = try(aws_ecs_service.main[0].id, aws_ecs_service.ignore_task_definition[0].id)
   cluster         = var.cluster_arn
   external_id     = var.external_id
   task_definition = local.task_definition
@@ -1118,9 +1138,9 @@ resource "aws_ecs_task_set" "this" {
 
 resource "aws_ecs_task_set" "ignore_task_definition" {
   # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskset.html
-  count = local.create_task_definition && local.is_external_deployment && var.ignore_task_definition_changes ? 1 : 0
+  count = local.enable_task_definition && local.is_external_deployment && var.ignore_task_definition_changes ? 1 : 0
 
-  service         = try(aws_ecs_service.this[0].id, aws_ecs_service.ignore_task_definition[0].id)
+  service         = try(aws_ecs_service.main[0].id, aws_ecs_service.ignore_task_definition[0].id)
   cluster         = var.cluster_arn
   external_id     = var.external_id
   task_definition = local.task_definition
@@ -1199,32 +1219,32 @@ resource "aws_ecs_task_set" "ignore_task_definition" {
 ################################################################################
 
 locals {
-  enable_autoscaling = local.create_service && var.enable_autoscaling && !local.is_daemon
+  enable_autoscaling = local.enable_service && var.enable_autoscaling && !local.is_daemon
 
   cluster_name = try(element(split("/", var.cluster_arn), 1), "")
 }
 
-resource "aws_appautoscaling_target" "this" {
+resource "aws_appautoscaling_target" "main" {
   count = local.enable_autoscaling ? 1 : 0
 
   # Desired needs to be between or equal to min/max
   min_capacity = min(var.autoscaling_min_capacity, var.desired_count)
   max_capacity = max(var.autoscaling_max_capacity, var.desired_count)
 
-  resource_id        = "service/${local.cluster_name}/${try(aws_ecs_service.this[0].name, aws_ecs_service.ignore_task_definition[0].name)}"
+  resource_id        = "service/${local.cluster_name}/${try(aws_ecs_service.main[0].name, aws_ecs_service.ignore_task_definition[0].name)}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
   tags               = var.tags
 }
 
-resource "aws_appautoscaling_policy" "this" {
+resource "aws_appautoscaling_policy" "main" {
   for_each = { for k, v in var.autoscaling_policies : k => v if local.enable_autoscaling }
 
   name               = try(each.value.name, each.key)
   policy_type        = try(each.value.policy_type, "TargetTrackingScaling")
-  resource_id        = aws_appautoscaling_target.this[0].resource_id
-  scalable_dimension = aws_appautoscaling_target.this[0].scalable_dimension
-  service_namespace  = aws_appautoscaling_target.this[0].service_namespace
+  resource_id        = aws_appautoscaling_target.main[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.main[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.main[0].service_namespace
 
   dynamic "step_scaling_policy_configuration" {
     for_each = try([each.value.step_scaling_policy_configuration], [])
@@ -1289,13 +1309,13 @@ resource "aws_appautoscaling_policy" "this" {
   }
 }
 
-resource "aws_appautoscaling_scheduled_action" "this" {
+resource "aws_appautoscaling_scheduled_action" "main" {
   for_each = { for k, v in var.autoscaling_scheduled_actions : k => v if local.enable_autoscaling }
 
   name               = try(each.value.name, each.key)
-  service_namespace  = aws_appautoscaling_target.this[0].service_namespace
-  resource_id        = aws_appautoscaling_target.this[0].resource_id
-  scalable_dimension = aws_appautoscaling_target.this[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.main[0].service_namespace
+  resource_id        = aws_appautoscaling_target.main[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.main[0].scalable_dimension
 
   scalable_target_action {
     min_capacity = each.value.min_capacity
@@ -1313,23 +1333,23 @@ resource "aws_appautoscaling_scheduled_action" "this" {
 ################################################################################
 
 locals {
-  create_security_group = var.create && var.create_security_group && var.network_mode == "awsvpc"
+  enable_security_group = var.enable && var.enable_security_group && var.network_mode == "awsvpc"
   security_group_name   = try(coalesce(var.security_group_name, var.name), "")
 }
 
-data "aws_subnet" "this" {
-  count = local.create_security_group ? 1 : 0
+data "aws_subnet" "main" {
+  count = local.enable_security_group ? 1 : 0
 
   id = element(var.subnet_ids, 0)
 }
 
-resource "aws_security_group" "this" {
-  count = local.create_security_group ? 1 : 0
+resource "aws_security_group" "main" {
+  count = local.enable_security_group ? 1 : 0
 
   name        = var.security_group_use_name_prefix ? null : local.security_group_name
   name_prefix = var.security_group_use_name_prefix ? "${local.security_group_name}-" : null
   description = var.security_group_description
-  vpc_id      = data.aws_subnet.this[0].vpc_id
+  vpc_id      = data.aws_subnet.main[0].vpc_id
 
   tags = merge(
     var.tags,
@@ -1342,17 +1362,33 @@ resource "aws_security_group" "this" {
   }
 }
 
-resource "aws_security_group_rule" "this" {
-  for_each = { for k, v in var.security_group_rules : k => v if local.create_security_group }
+locals {
+  default_egress_rule = {
+    egress_all = {
+      type        = "egress"
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
 
-  # Required
-  security_group_id = aws_security_group.this[0].id
+  combined_security_group_rules = merge(local.default_egress_rule, var.security_group_rules)
+}
+
+resource "aws_security_group_rule" "main" {
+  for_each = {
+    for k, v in local.combined_security_group_rules :
+    k => v
+    if local.enable_security_group
+  }
+
+  security_group_id = aws_security_group.main[0].id
+  type              = each.value.type
   protocol          = each.value.protocol
   from_port         = each.value.from_port
   to_port           = each.value.to_port
-  type              = each.value.type
 
-  # Optional
   description              = lookup(each.value, "description", null)
   cidr_blocks              = lookup(each.value, "cidr_blocks", null)
   ipv6_cidr_blocks         = lookup(each.value, "ipv6_cidr_blocks", null)
@@ -1360,3 +1396,4 @@ resource "aws_security_group_rule" "this" {
   self                     = lookup(each.value, "self", null)
   source_security_group_id = lookup(each.value, "source_security_group_id", null)
 }
+

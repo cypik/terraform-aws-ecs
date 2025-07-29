@@ -1,25 +1,22 @@
 data "aws_partition" "current" {}
 
-################################################################################
-# Cluster
-################################################################################
 
 locals {
   execute_command_configuration = {
     logging = "OVERRIDE"
     log_configuration = {
-      cloud_watch_log_group_name = try(aws_cloudwatch_log_group.this[0].name, null)
+      cloud_watch_log_group_name = try(aws_cloudwatch_log_group.main[0].name, null)
     }
   }
 }
 
-resource "aws_ecs_cluster" "this" {
-  count = var.create ? 1 : 0
+resource "aws_ecs_cluster" "main" {
+  count = var.enable ? 1 : 0
 
-  name = var.cluster_name
+  name = format("%s-%s", var.name, "ecs-cluster")
 
   dynamic "configuration" {
-    for_each = var.create_cloudwatch_log_group ? [var.cluster_configuration] : []
+    for_each = var.enable_cloudwatch_log_group ? [var.cluster_configuration] : []
 
     content {
       dynamic "execute_command_configuration" {
@@ -46,7 +43,7 @@ resource "aws_ecs_cluster" "this" {
   }
 
   dynamic "configuration" {
-    for_each = !var.create_cloudwatch_log_group && length(var.cluster_configuration) > 0 ? [var.cluster_configuration] : []
+    for_each = !var.enable_cloudwatch_log_group && length(var.cluster_configuration) > 0 ? [var.cluster_configuration] : []
 
     content {
       dynamic "execute_command_configuration" {
@@ -96,10 +93,10 @@ resource "aws_ecs_cluster" "this" {
 # CloudWatch Log Group
 ################################################################################
 
-resource "aws_cloudwatch_log_group" "this" {
-  count = var.create && var.create_cloudwatch_log_group ? 1 : 0
+resource "aws_cloudwatch_log_group" "main" {
+  count = var.enable && var.enable_cloudwatch_log_group ? 1 : 0
 
-  name              = "/aws/ecs/${var.cluster_name}"
+  name              = format("%s-%s", var.name, "ecs-cluster-cloudwatch-log-group")
   retention_in_days = var.cloudwatch_log_group_retention_in_days
   kms_key_id        = var.cloudwatch_log_group_kms_key_id
 
@@ -117,10 +114,10 @@ locals {
   )
 }
 
-resource "aws_ecs_cluster_capacity_providers" "this" {
-  count = var.create && length(merge(var.fargate_capacity_providers, var.autoscaling_capacity_providers)) > 0 ? 1 : 0
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  count = var.enable && length(merge(var.fargate_capacity_providers, var.autoscaling_capacity_providers)) > 0 ? 1 : 0
 
-  cluster_name = aws_ecs_cluster.this[0].name
+  cluster_name = aws_ecs_cluster.main[0].name
   capacity_providers = distinct(concat(
     [for k, v in var.fargate_capacity_providers : try(v.name, k)],
     [for k, v in var.autoscaling_capacity_providers : try(v.name, k)]
@@ -139,7 +136,7 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
   }
 
   depends_on = [
-    aws_ecs_capacity_provider.this
+    aws_ecs_capacity_provider.main
   ]
 }
 
@@ -147,8 +144,8 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
 # Capacity Provider - Autoscaling Group(s)
 ################################################################################
 
-resource "aws_ecs_capacity_provider" "this" {
-  for_each = { for k, v in var.autoscaling_capacity_providers : k => v if var.create }
+resource "aws_ecs_capacity_provider" "main" {
+  for_each = { for k, v in var.autoscaling_capacity_providers : k => v if var.enable }
 
   name = try(each.value.name, each.key)
 
@@ -179,14 +176,14 @@ resource "aws_ecs_capacity_provider" "this" {
 ################################################################################
 
 locals {
-  task_exec_iam_role_name = try(coalesce(var.task_exec_iam_role_name, var.cluster_name), "")
+  task_exec_iam_role_name = try(coalesce(var.task_exec_iam_role_name, format("%s-%s", var.name, "ecs-tasks-iam-role")), "")
 
-  create_task_exec_iam_role = var.create && var.create_task_exec_iam_role
-  create_task_exec_policy   = local.create_task_exec_iam_role && var.create_task_exec_policy
+  enable_task_exec_iam_role = var.enable && var.enable_task_exec_iam_role
+  enable_task_exec_policy   = local.enable_task_exec_iam_role && var.enable_task_exec_policy
 }
 
 data "aws_iam_policy_document" "task_exec_assume" {
-  count = local.create_task_exec_iam_role ? 1 : 0
+  count = local.enable_task_exec_iam_role ? 1 : 0
 
   statement {
     sid     = "ECSTaskExecutionAssumeRole"
@@ -200,7 +197,7 @@ data "aws_iam_policy_document" "task_exec_assume" {
 }
 
 resource "aws_iam_role" "task_exec" {
-  count = local.create_task_exec_iam_role ? 1 : 0
+  count = local.enable_task_exec_iam_role ? 1 : 0
 
   name        = var.task_exec_iam_role_use_name_prefix ? null : local.task_exec_iam_role_name
   name_prefix = var.task_exec_iam_role_use_name_prefix ? "${local.task_exec_iam_role_name}-" : null
@@ -215,14 +212,14 @@ resource "aws_iam_role" "task_exec" {
 }
 
 resource "aws_iam_role_policy_attachment" "task_exec_additional" {
-  for_each = { for k, v in var.task_exec_iam_role_policies : k => v if local.create_task_exec_iam_role }
+  for_each = { for k, v in var.task_exec_iam_role_policies : k => v if local.enable_task_exec_iam_role }
 
   role       = aws_iam_role.task_exec[0].name
   policy_arn = each.value
 }
 
 data "aws_iam_policy_document" "task_exec" {
-  count = local.create_task_exec_policy ? 1 : 0
+  count = local.enable_task_exec_policy ? 1 : 0
 
   # Pulled from AmazonECSTaskExecutionRolePolicy
   statement {
@@ -309,7 +306,7 @@ data "aws_iam_policy_document" "task_exec" {
 }
 
 resource "aws_iam_policy" "task_exec" {
-  count = local.create_task_exec_policy ? 1 : 0
+  count = local.enable_task_exec_policy ? 1 : 0
 
   name        = var.task_exec_iam_role_use_name_prefix ? null : local.task_exec_iam_role_name
   name_prefix = var.task_exec_iam_role_use_name_prefix ? "${local.task_exec_iam_role_name}-" : null
@@ -320,7 +317,7 @@ resource "aws_iam_policy" "task_exec" {
 }
 
 resource "aws_iam_role_policy_attachment" "task_exec" {
-  count = local.create_task_exec_policy ? 1 : 0
+  count = local.enable_task_exec_policy ? 1 : 0
 
   role       = aws_iam_role.task_exec[0].name
   policy_arn = aws_iam_policy.task_exec[0].arn
