@@ -1,4 +1,4 @@
-variable "create" {
+variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
   default     = true
@@ -14,7 +14,7 @@ variable "tags" {
 # Cluster
 ################################################################################
 
-variable "cluster_name" {
+variable "name" {
   description = "Name of the cluster (up to 255 letters, numbers, hyphens, and underscores)"
   type        = string
   default     = ""
@@ -27,12 +27,14 @@ variable "cluster_configuration" {
 }
 
 variable "cluster_settings" {
-  description = "Configuration block(s) with cluster settings. For example, this can be used to enable CloudWatch Container Insights for a cluster"
-  type        = map(string)
-  default = {
-    name  = "containerInsights"
-    value = "enabled"
-  }
+  description = "List of configuration block(s) with cluster settings. For example, this can be used to enable CloudWatch Container Insights for a cluster"
+  type        = any
+  default = [
+    {
+      name  = "containerInsights"
+      value = "enabled"
+    }
+  ]
 }
 
 variable "cluster_service_connect_defaults" {
@@ -45,7 +47,7 @@ variable "cluster_service_connect_defaults" {
 # CloudWatch Log Group
 ################################################################################
 
-variable "create_cloudwatch_log_group" {
+variable "enable_cloudwatch_log_group" {
   description = "Determines whether a log group is created by this module for the cluster logs. If not, AWS will automatically create one if logging is enabled"
   type        = bool
   default     = true
@@ -96,7 +98,7 @@ variable "autoscaling_capacity_providers" {
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 ################################################################################
 
-variable "create_task_exec_iam_role" {
+variable "enable_task_exec_iam_role" {
   description = "Determines whether the ECS task definition IAM role should be created"
   type        = bool
   default     = false
@@ -144,7 +146,7 @@ variable "task_exec_iam_role_policies" {
   default     = {}
 }
 
-variable "create_task_exec_policy" {
+variable "enable_task_exec_policy" {
   description = "Determines whether the ECS task definition IAM policy should be created. This includes permissions included in AmazonECSTaskExecutionRolePolicy as well as access to secrets and SSM parameters"
   type        = bool
   default     = true

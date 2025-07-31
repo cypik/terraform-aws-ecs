@@ -1,5 +1,11 @@
-variable "create" {
+variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_service" {
+  description = "Determines whether service resource will be created (set to `false` in case you want to create task definition only)"
   type        = bool
   default     = true
 }
@@ -63,7 +69,7 @@ variable "deployment_minimum_healthy_percent" {
 }
 
 variable "desired_count" {
-  description = "Number of instances of the task definition to place and keep running. Defaults to `0`"
+  description = "Number of instances of the task definition to place and keep running"
   type        = number
   default     = 1
 }
@@ -188,11 +194,17 @@ variable "wait_for_steady_state" {
   default     = null
 }
 
+variable "service_tags" {
+  description = "A map of additional tags to add to the service"
+  type        = map(string)
+  default     = {}
+}
+
 ################################################################################
 # Service - IAM Role
 ################################################################################
 
-variable "create_iam_role" {
+variable "enable_iam_role" {
   description = "Determines whether the ECS service IAM role should be created"
   type        = bool
   default     = true
@@ -250,7 +262,7 @@ variable "iam_role_statements" {
 # Task Definition
 ################################################################################
 
-variable "create_task_definition" {
+variable "enable_task_definition" {
   description = "Determines whether to create a task definition or use existing/provided"
   type        = bool
   default     = true
@@ -290,12 +302,6 @@ variable "family" {
   description = "A unique name for your task definition"
   type        = string
   default     = null
-}
-
-variable "inference_accelerator" {
-  description = "Configuration block(s) with Inference Accelerators settings"
-  type        = any
-  default     = {}
 }
 
 variable "ipc_mode" {
@@ -372,7 +378,7 @@ variable "task_tags" {
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 ################################################################################
 
-variable "create_task_exec_iam_role" {
+variable "enable_task_exec_iam_role" {
   description = "Determines whether the ECS task definition IAM role should be created"
   type        = bool
   default     = true
@@ -426,7 +432,13 @@ variable "task_exec_iam_role_policies" {
   default     = {}
 }
 
-variable "create_task_exec_policy" {
+variable "task_exec_iam_role_max_session_duration" {
+  description = "Maximum session duration (in seconds) for ECS task execution role. Default is 3600."
+  type        = number
+  default     = null
+}
+
+variable "enable_task_exec_policy" {
   description = "Determines whether the ECS task definition IAM policy should be created. This includes permissions included in AmazonECSTaskExecutionRolePolicy as well as access to secrets and SSM parameters"
   type        = bool
   default     = true
@@ -455,7 +467,7 @@ variable "task_exec_iam_statements" {
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html
 ################################################################################
 
-variable "create_tasks_iam_role" {
+variable "enable_tasks_iam_role" {
   description = "Determines whether the ECS tasks IAM role should be created"
   type        = bool
   default     = true
@@ -606,7 +618,7 @@ variable "autoscaling_scheduled_actions" {
 # Security Group
 ################################################################################
 
-variable "create_security_group" {
+variable "enable_security_group" {
   description = "Determines if a security group is created"
   type        = bool
   default     = true

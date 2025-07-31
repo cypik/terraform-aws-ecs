@@ -5,16 +5,15 @@
 module "cluster" {
   source = "./modules/cluster"
 
-  create = var.create
-
+  enable = var.enable_cluster
   # Cluster
-  cluster_name                     = "my-ecs-cluster"
+  name                             = var.name
   cluster_configuration            = var.cluster_configuration
   cluster_settings                 = var.cluster_settings
   cluster_service_connect_defaults = var.cluster_service_connect_defaults
 
   # Cluster Cloudwatch log group
-  create_cloudwatch_log_group            = var.create_cloudwatch_log_group
+  enable_cloudwatch_log_group            = var.enable_cloudwatch_log_group
   cloudwatch_log_group_retention_in_days = var.cloudwatch_log_group_retention_in_days
   cloudwatch_log_group_kms_key_id        = var.cloudwatch_log_group_kms_key_id
   cloudwatch_log_group_tags              = var.cloudwatch_log_group_tags
@@ -25,7 +24,7 @@ module "cluster" {
   autoscaling_capacity_providers        = var.autoscaling_capacity_providers
 
   # Task execution IAM role
-  create_task_exec_iam_role               = var.create_task_exec_iam_role
+  enable_task_exec_iam_role               = var.enable_task_exec_iam_role
   task_exec_iam_role_name                 = var.task_exec_iam_role_name
   task_exec_iam_role_use_name_prefix      = var.task_exec_iam_role_use_name_prefix
   task_exec_iam_role_path                 = var.task_exec_iam_role_path
@@ -35,13 +34,15 @@ module "cluster" {
   task_exec_iam_role_policies             = var.task_exec_iam_role_policies
 
   # Task execution IAM role policy
-  create_task_exec_policy  = var.create_task_exec_policy
+  enable_task_exec_policy  = var.enable_task_exec_policy
   task_exec_ssm_param_arns = var.task_exec_ssm_param_arns
   task_exec_secret_arns    = var.task_exec_secret_arns
   task_exec_iam_statements = var.task_exec_iam_statements
 
   tags = merge(var.tags, var.cluster_tags)
 }
+
+
 
 ################################################################################
 # Service(s)
@@ -50,15 +51,16 @@ module "cluster" {
 module "service" {
   source = "./modules/service"
 
-  for_each = { for k, v in var.services : k => v if var.create }
+  for_each = { for k, v in var.services : k => v if var.enable }
 
-  create = try(each.value.create, true)
+  enable         = try(each.value.enable, true)
+  enable_service = try(each.value.enable_service, true)
 
   # Service
   ignore_task_definition_changes     = try(each.value.ignore_task_definition_changes, false)
   alarms                             = try(each.value.alarms, {})
   capacity_provider_strategy         = try(each.value.capacity_provider_strategy, {})
-  cluster_arn                        = module.cluster.arn
+  cluster_arn                        = var.enable_cluster ? module.cluster.arn : var.cluster_arn
   deployment_circuit_breaker         = try(each.value.deployment_circuit_breaker, {})
   deployment_controller              = try(each.value.deployment_controller, {})
   deployment_maximum_percent         = try(each.value.deployment_maximum_percent, 200)
@@ -86,7 +88,7 @@ module "service" {
   wait_for_steady_state              = try(each.value.wait_for_steady_state, null)
 
   # Service IAM role
-  create_iam_role               = try(each.value.create_iam_role, true)
+  enable_iam_role               = try(each.value.enable_iam_role, true)
   iam_role_arn                  = lookup(each.value, "iam_role_arn", null)
   iam_role_name                 = try(each.value.iam_role_name, null)
   iam_role_use_name_prefix      = try(each.value.iam_role_use_name_prefix, true)
@@ -97,17 +99,17 @@ module "service" {
   iam_role_statements           = lookup(each.value, "iam_role_statements", {})
 
   # Task definition
-  create_task_definition        = try(each.value.create_task_definition, true)
+  enable_task_definition        = try(each.value.enable_task_definition, true)
   task_definition_arn           = lookup(each.value, "task_definition_arn", null)
   container_definitions         = try(each.value.container_definitions, {})
   container_definition_defaults = try(each.value.container_definition_defaults, {})
   cpu                           = try(each.value.cpu, 1024)
   ephemeral_storage             = try(each.value.ephemeral_storage, {})
   family                        = try(each.value.family, null)
-  inference_accelerator         = try(each.value.inference_accelerator, {})
   ipc_mode                      = try(each.value.ipc_mode, null)
   memory                        = try(each.value.memory, 2048)
   network_mode                  = try(each.value.network_mode, "awsvpc")
+  pid_mode                      = try(each.value.pid_mode, null)
   proxy_configuration           = try(each.value.proxy_configuration, {})
   requires_compatibilities      = try(each.value.requires_compatibilities, ["FARGATE"])
   runtime_platform = try(each.value.runtime_platform, {
@@ -119,7 +121,7 @@ module "service" {
   task_tags    = try(each.value.task_tags, {})
 
   # Task execution IAM role
-  create_task_exec_iam_role               = try(each.value.create_task_exec_iam_role, true)
+  enable_task_exec_iam_role               = try(each.value.enable_task_exec_iam_role, true)
   task_exec_iam_role_arn                  = lookup(each.value, "task_exec_iam_role_arn", null)
   task_exec_iam_role_name                 = try(each.value.task_exec_iam_role_name, null)
   task_exec_iam_role_use_name_prefix      = try(each.value.task_exec_iam_role_use_name_prefix, true)
@@ -128,15 +130,16 @@ module "service" {
   task_exec_iam_role_permissions_boundary = try(each.value.task_exec_iam_role_permissions_boundary, null)
   task_exec_iam_role_tags                 = try(each.value.task_exec_iam_role_tags, {})
   task_exec_iam_role_policies             = try(each.value.task_exec_iam_role_policies, {})
+  task_exec_iam_role_max_session_duration = try(each.value.task_exec_iam_role_max_session_duration, null)
 
   # Task execution IAM role policy
-  create_task_exec_policy  = try(each.value.create_task_exec_policy, true)
+  enable_task_exec_policy  = try(each.value.enable_task_exec_policy, true)
   task_exec_ssm_param_arns = lookup(each.value, "task_exec_ssm_param_arns", ["arn:aws:ssm:*:*:parameter/*"])
   task_exec_secret_arns    = lookup(each.value, "task_exec_secret_arns", ["arn:aws:secretsmanager:*:*:secret:*"])
   task_exec_iam_statements = lookup(each.value, "task_exec_iam_statements", {})
 
   # Tasks - IAM role
-  create_tasks_iam_role               = try(each.value.create_tasks_iam_role, true)
+  enable_tasks_iam_role               = try(each.value.enable_tasks_iam_role, true)
   tasks_iam_role_arn                  = lookup(each.value, "tasks_iam_role_arn", null)
   tasks_iam_role_name                 = try(each.value.tasks_iam_role_name, null)
   tasks_iam_role_use_name_prefix      = try(each.value.tasks_iam_role_use_name_prefix, true)
@@ -181,7 +184,7 @@ module "service" {
   autoscaling_scheduled_actions = try(each.value.autoscaling_scheduled_actions, {})
 
   # Security Group
-  create_security_group          = try(each.value.create_security_group, true)
+  enable_security_group          = try(each.value.enable_security_group, true)
   security_group_name            = try(each.value.security_group_name, null)
   security_group_use_name_prefix = try(each.value.security_group_use_name_prefix, true)
   security_group_description     = try(each.value.security_group_description, null)

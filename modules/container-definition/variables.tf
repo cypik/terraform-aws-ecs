@@ -59,6 +59,12 @@ variable "docker_security_options" {
   default     = []
 }
 
+variable "enable_execute_command" {
+  description = "Specifies whether to enable Amazon ECS Exec for the tasks within the service"
+  type        = bool
+  default     = false
+}
+
 variable "entrypoint" {
   description = "The entry point that is passed to the container"
   type        = list(string)
@@ -141,7 +147,7 @@ variable "linux_parameters" {
 }
 
 variable "log_configuration" {
-  description = "Linux-specific modifications that are applied to the container, such as Linux kernel capabilities. For more information see [KernelCapabilities](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_KernelCapabilities.html)"
+  description = "The log configuration for the container. For more information see [LogConfiguration](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_LogConfiguration.html)"
   type        = any
   default     = {}
 }
@@ -280,7 +286,7 @@ variable "enable_cloudwatch_logging" {
   default     = true
 }
 
-variable "create_cloudwatch_log_group" {
+variable "enable_cloudwatch_log_group" {
   description = "Determines whether a log group is created by this module. If not, AWS will automatically create one if logging is enabled"
   type        = bool
   default     = true
