@@ -3,8 +3,8 @@ provider "aws" {
 }
 
 locals {
-  region         = "eu-west-2"
-  name           = "test-ecs2"
+  region         = "ap-south-1"
+  name           = "test-ecsret2"
   environment    = "qa"
   container_name = "ecs-sample"
   container_port = 80
@@ -29,7 +29,7 @@ module "subnets" {
   version             = "1.0.5"
   nat_gateway_enabled = true
   single_nat_gateway  = true
-  availability_zones  = ["eu-west-2a", "eu-west-2b", "eu-west-2c"]
+  availability_zones  = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
   vpc_id              = module.vpc.vpc_id
   type                = "public-private"
   igw_id              = module.vpc.igw_id

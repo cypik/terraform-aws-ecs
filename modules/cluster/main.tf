@@ -16,7 +16,7 @@ locals {
 resource "aws_ecs_cluster" "this" {
   count = var.enable ? 1 : 0
 
-  name = format("%s-ecs-cluster", var.name)
+  name = var.name
 
   dynamic "configuration" {
     for_each = var.enable_cloudwatch_log_group ? [var.cluster_configuration] : []
