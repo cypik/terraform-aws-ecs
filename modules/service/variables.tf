@@ -1,39 +1,3 @@
-variable "name" {
-  type        = string
-  default     = ""
-  description = "Name  (e.g. `app` or `cluster`)."
-}
-
-variable "repository" {
-  type        = string
-  default     = "https://github.com/cypik/terraform-aws-ecs"
-  description = "Terraform current module repo"
-}
-
-variable "environment" {
-  type        = string
-  default     = ""
-  description = "Environment (e.g. `prod`, `dev`, `staging`)."
-}
-
-variable "label_order" {
-  type        = list(any)
-  default     = ["name", "environment"]
-  description = "Label order, e.g. `name`,`application`."
-}
-
-variable "attributes" {
-  type        = list(any)
-  default     = []
-  description = "Additional attributes (e.g. `1`)."
-}
-
-variable "managedby" {
-  type        = string
-  default     = "hello@cypik.com"
-  description = "ManagedBy, eg 'cypik'."
-}
-
 variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
@@ -144,6 +108,12 @@ variable "load_balancer" {
   description = "Configuration block for load balancers"
   type        = any
   default     = {}
+}
+
+variable "name" {
+  description = "Name of the service (up to 255 letters, numbers, hyphens, and underscores)"
+  type        = string
+  default     = null
 }
 
 variable "assign_public_ip" {
@@ -533,11 +503,11 @@ variable "tasks_iam_role_path" {
   default     = null
 }
 
-# variable "tasks_iam_role_description" {
-#   description = "Description of the role"
-#   type        = string
-#   default     = "tasks IAM role"
-# }
+variable "tasks_iam_role_description" {
+  description = "Description of the role"
+  type        = string
+  default     = null
+}
 
 variable "tasks_iam_role_permissions_boundary" {
   description = "ARN of the policy that is used to set the permissions boundary for the IAM role"
@@ -554,7 +524,7 @@ variable "tasks_iam_role_tags" {
 variable "tasks_iam_role_policies" {
   description = "Map of IAM role policy ARNs to attach to the IAM role"
   type        = map(string)
-  default     = { ReadOnlyAccess = "arn:aws:iam::aws:policy/ReadOnlyAccess" }
+  default     = {}
 }
 
 variable "tasks_iam_role_statements" {
@@ -688,9 +658,4 @@ variable "security_group_tags" {
   description = "A map of additional tags to add to the security group created"
   type        = map(string)
   default     = {}
-}
-
-variable "namespace_name" {
-  type    = list(any)
-  default = []
 }

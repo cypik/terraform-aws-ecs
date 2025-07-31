@@ -35,11 +35,18 @@ variable "managedby" {
 }
 
 
+variable "create" {
+  description = "Determines whether resources will be created (affects all resources)"
+  type        = bool
+  default     = true
+}
+
 variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
   default     = true
 }
+
 
 variable "tags" {
   description = "A map of tags to add to all resources"
@@ -105,7 +112,7 @@ variable "enable_cloudwatch_log_group" {
 variable "cloudwatch_log_group_retention_in_days" {
   description = "Number of days to retain log events"
   type        = number
-  default     = 7
+  default     = 90
 }
 
 variable "cloudwatch_log_group_kms_key_id" {

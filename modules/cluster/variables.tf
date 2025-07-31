@@ -1,11 +1,3 @@
-#Module      : LABEL
-#Description : Terraform label module variables
-variable "name" {
-  type        = string
-  default     = ""
-  description = "Name  (e.g. `app` or `cluster`)."
-}
-
 variable "repository" {
   type        = string
   default     = "https://github.com/cypik/terraform-aws-ecs"
@@ -53,7 +45,7 @@ variable "tags" {
 # Cluster
 ################################################################################
 
-variable "cluster_name" {
+variable "name" {
   description = "Name of the cluster (up to 255 letters, numbers, hyphens, and underscores)"
   type        = string
   default     = ""
@@ -95,7 +87,7 @@ variable "enable_cloudwatch_log_group" {
 variable "cloudwatch_log_group_retention_in_days" {
   description = "Number of days to retain log events"
   type        = number
-  default     = 7
+  default     = 90
 }
 
 variable "cloudwatch_log_group_kms_key_id" {

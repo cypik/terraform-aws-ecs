@@ -4,17 +4,17 @@
 
 output "arn" {
   description = "ARN that identifies the cluster"
-  value       = try(aws_ecs_cluster.main[0].arn, null)
+  value       = try(aws_ecs_cluster.this[0].arn, null)
 }
 
 output "id" {
   description = "ID that identifies the cluster"
-  value       = try(aws_ecs_cluster.main[0].id, null)
+  value       = try(aws_ecs_cluster.this[0].id, null)
 }
 
 output "name" {
   description = "Name that identifies the cluster"
-  value       = try(aws_ecs_cluster.main[0].name, null)
+  value       = try(aws_ecs_cluster.this[0].name, null)
 }
 
 ################################################################################
@@ -23,12 +23,12 @@ output "name" {
 
 output "cloudwatch_log_group_name" {
   description = "Name of cloudwatch log group created"
-  value       = try(aws_cloudwatch_log_group.main[0].name, null)
+  value       = try(aws_cloudwatch_log_group.this[0].name, null)
 }
 
 output "cloudwatch_log_group_arn" {
   description = "Arn of cloudwatch log group created"
-  value       = try(aws_cloudwatch_log_group.main[0].arn, null)
+  value       = try(aws_cloudwatch_log_group.this[0].arn, null)
 }
 
 ################################################################################
@@ -37,7 +37,7 @@ output "cloudwatch_log_group_arn" {
 
 output "cluster_capacity_providers" {
   description = "Map of cluster capacity providers attributes"
-  value       = { for k, v in aws_ecs_cluster_capacity_providers.main : v.id => v }
+  value       = { for k, v in aws_ecs_cluster_capacity_providers.this : v.id => v }
 }
 
 ################################################################################
@@ -46,7 +46,7 @@ output "cluster_capacity_providers" {
 
 output "autoscaling_capacity_providers" {
   description = "Map of autoscaling capacity providers created and their attributes"
-  value       = aws_ecs_capacity_provider.main
+  value       = aws_ecs_capacity_provider.this
 }
 
 ################################################################################

@@ -2,10 +2,13 @@ provider "aws" {
   region = local.region
 }
 
+data "aws_availability_zones" "available" {}
+
+
 locals {
-  region         = "eu-west-2"
-  name           = "test"
-  environment    = "demo"
+  region         = "eu-west-1"
+  name           = "test-ecs"
+  environment    = "qa"
   container_name = "apache"
   container_port = 80
   tags = {
@@ -22,22 +25,22 @@ module "vpc" {
   cidr_block  = "10.0.0.0/16"
 }
 
+
 module "subnets" {
   source             = "cypik/subnet/aws"
-  version            = "1.0.2"
+  version            = "1.0.5"
   name               = local.name
   environment        = local.environment
-  availability_zones = ["eu-west-2a", "eu-west-2b", "eu-west-2c"]
-  type               = "public"
+  availability_zones = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  type               = "public-private"
   vpc_id             = module.vpc.vpc_id
   cidr_block         = module.vpc.vpc_cidr_block
   igw_id             = module.vpc.igw_id
 }
 
-
 module "security_group" {
   source      = "cypik/security-group/aws"
-  version     = "1.0.1"
+  version     = "1.0.3"
   name        = local.name
   environment = local.environment
   vpc_id      = module.vpc.vpc_id
@@ -64,12 +67,15 @@ module "security_group" {
 
   ]
 }
+###############################################################################
+##########Cluster
+###############################################################################
+
 
 module "ecs" {
   source = "../.."
 
-  name        = local.name
-  environment = local.environment
+  name = local.name
   # Capacity provider
   fargate_capacity_providers = {
     FARGATE_SPOT = {
@@ -147,9 +153,6 @@ module "ecs" {
   tags = local.tags
 }
 
-
-
-
 module "alb" {
   source  = "cypik/lb/aws"
   version = "1.0.4"
@@ -180,12 +183,6 @@ module "alb" {
   #      target_group_index = 0
   #      certificate_arn    = ""
   #    },
-  ##    {
-  ##      port               = 84
-  ##      protocol           = "TLS"
-  ##      target_group_index = 0
-  ##      certificate_arn    = ""
-  ##    },
   #  ]
 
   target_groups = [

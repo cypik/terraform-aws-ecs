@@ -3,7 +3,7 @@ data "aws_region" "current" {}
 locals {
   is_not_windows = contains(["LINUX"], var.operating_system_family)
 
-  log_group_name = try(coalesce(var.cloudwatch_log_group_name, format("%s-ecs-service-cloudwatch-log-group", var.name)), "")
+  log_group_name = try(coalesce(var.cloudwatch_log_group_name, "/aws/ecs/${var.service}/${var.name}"), "")
 
   log_configuration = merge(
     { for k, v in {
@@ -26,16 +26,16 @@ locals {
   }, var.health_check) : null
 
   definition = {
-    command               = length(var.command) > 0 ? var.command : null
-    cpu                   = var.cpu
-    dependsOn             = length(var.dependencies) > 0 ? var.dependencies : null # depends_on is a reserved word
-    disableNetworking     = local.is_not_windows ? var.disable_networking : null
-    dnsSearchDomains      = local.is_not_windows && length(var.dns_search_domains) > 0 ? var.dns_search_domains : null
-    dnsServers            = local.is_not_windows && length(var.dns_servers) > 0 ? var.dns_servers : null
-    dockerLabels          = length(var.docker_labels) > 0 ? var.docker_labels : null
-    dockerSecurityOptions = length(var.docker_security_options) > 0 ? var.docker_security_options : null
-    entrypoint            = length(var.entrypoint) > 0 ? var.entrypoint : null
-    # environment            = var.environment
+    command                = length(var.command) > 0 ? var.command : null
+    cpu                    = var.cpu
+    dependsOn              = length(var.dependencies) > 0 ? var.dependencies : null # depends_on is a reserved word
+    disableNetworking      = local.is_not_windows ? var.disable_networking : null
+    dnsSearchDomains       = local.is_not_windows && length(var.dns_search_domains) > 0 ? var.dns_search_domains : null
+    dnsServers             = local.is_not_windows && length(var.dns_servers) > 0 ? var.dns_servers : null
+    dockerLabels           = length(var.docker_labels) > 0 ? var.docker_labels : null
+    dockerSecurityOptions  = length(var.docker_security_options) > 0 ? var.docker_security_options : null
+    entrypoint             = length(var.entrypoint) > 0 ? var.entrypoint : null
+    environment            = var.environment
     environmentFiles       = length(var.environment_files) > 0 ? var.environment_files : null
     essential              = var.essential
     extraHosts             = local.is_not_windows && length(var.extra_hosts) > 0 ? var.extra_hosts : null
@@ -74,7 +74,7 @@ locals {
 resource "aws_cloudwatch_log_group" "this" {
   count = var.enable_cloudwatch_log_group && var.enable_cloudwatch_logging ? 1 : 0
 
-  name              = format("%s-ecs-service-cloudwatch-log-group", var.name)
+  name              = "/aws/ecs/${var.service}/${var.name}"
   retention_in_days = var.cloudwatch_log_group_retention_in_days
   kms_key_id        = var.cloudwatch_log_group_kms_key_id
 

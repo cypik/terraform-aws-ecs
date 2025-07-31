@@ -2,11 +2,13 @@ provider "aws" {
   region = local.region
 }
 
+data "aws_availability_zones" "available" {}
+
 
 locals {
-  region         = "eu-west-1"
-  name           = "test"
-  environment    = "demo"
+  region         = "eu-west-2"
+  name           = "test-ecs3"
+  environment    = "qa"
   container_name = "apache"
   container_port = 80
   tags = {
@@ -23,22 +25,22 @@ module "vpc" {
   cidr_block  = "10.0.0.0/16"
 }
 
+
 module "subnets" {
   source              = "cypik/subnet/aws"
-  version             = "1.0.2"
+  version             = "1.0.5"
   nat_gateway_enabled = true
   single_nat_gateway  = true
-  availability_zones  = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
+  availability_zones  = ["eu-west-2a", "eu-west-2b", "eu-west-2c"]
   vpc_id              = module.vpc.vpc_id
   type                = "public-private"
   igw_id              = module.vpc.igw_id
   cidr_block          = module.vpc.vpc_cidr_block
 }
 
-
 module "security_group" {
   source      = "cypik/security-group/aws"
-  version     = "1.0.1"
+  version     = "1.0.3"
   name        = local.name
   environment = local.environment
   vpc_id      = module.vpc.vpc_id
@@ -47,7 +49,7 @@ module "security_group" {
   new_sg_ingress_rules_with_cidr_blocks = [{
     rule_count  = 1
     from_port   = 80
-    to_port     = 80
+    to_port     = 82
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
     description = "Allow http traffic."
@@ -65,7 +67,6 @@ module "security_group" {
 
   ]
 }
-
 ###############################################################################
 ##########Cluster
 ###############################################################################
@@ -74,8 +75,7 @@ module "security_group" {
 module "ecs" {
   source = "../.."
 
-  name        = local.name
-  environment = local.environment
+  name = local.name
   # Capacity provider
   fargate_capacity_providers = {
     FARGATE_SPOT = {
@@ -87,7 +87,7 @@ module "ecs" {
 
   ##service1
   services = {
-    ecsdemo-frontend = { ## service name
+    ecsdemo-frontend2 = { ## service name
       cpu                      = 256
       memory                   = 512
       desired_count            = 1
@@ -153,7 +153,9 @@ module "ecs" {
 }
 
 
-
+###############################################################################
+###Service
+###############################################################################
 
 module "alb" {
   source  = "cypik/lb/aws"
@@ -185,12 +187,6 @@ module "alb" {
   #      target_group_index = 0
   #      certificate_arn    = ""
   #    },
-  ##    {
-  ##      port               = 84
-  ##      protocol           = "TLS"
-  ##      target_group_index = 0
-  ##      certificate_arn    = ""
-  ##    },
   #  ]
 
   target_groups = [

@@ -1,51 +1,3 @@
-variable "name" {
-  type        = string
-  default     = ""
-  description = "Name  (e.g. `app` or `cluster`)."
-}
-
-variable "repository" {
-  type        = string
-  default     = "https://github.com/cypik/terraform-aws-ecs"
-  description = "Terraform current module repo"
-}
-
-variable "environment" {
-  type        = string
-  default     = ""
-  description = "Environment (e.g. `prod`, `dev`, `staging`)."
-}
-
-variable "label_order" {
-  type        = list(any)
-  default     = ["name", "environment"]
-  description = "Label order, e.g. `name`,`application`."
-}
-
-variable "attributes" {
-  type        = list(any)
-  default     = []
-  description = "Additional attributes (e.g. `1`)."
-}
-
-variable "managedby" {
-  type        = string
-  default     = "hello@cypik.com"
-  description = "ManagedBy, eg 'cypik'."
-}
-
-
-variable "enable" {
-  description = "Determines whether resources will be created (affects all resources)"
-  type        = bool
-  default     = true
-}
-
-variable "tags" {
-  description = "A map of tags to add to all resources"
-  type        = map(string)
-  default     = {}
-}
 variable "operating_system_family" {
   description = "The OS family for task"
   type        = string
@@ -117,6 +69,15 @@ variable "entrypoint" {
   description = "The entry point that is passed to the container"
   type        = list(string)
   default     = []
+}
+
+variable "environment" {
+  description = "The environment variables to pass to the container"
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
 }
 
 variable "environment_files" {
@@ -207,6 +168,12 @@ variable "mount_points" {
   description = "The mount points for data volumes in your container"
   type        = list(any)
   default     = []
+}
+
+variable "name" {
+  description = "The name of a container. If you're linking multiple containers together in a task definition, the name of one container can be entered in the links of another container to connect the containers. Up to 255 letters (uppercase and lowercase), numbers, underscores, and hyphens are allowed"
+  type        = string
+  default     = null
 }
 
 variable "port_mappings" {
@@ -340,11 +307,17 @@ variable "cloudwatch_log_group_use_name_prefix" {
 variable "cloudwatch_log_group_retention_in_days" {
   description = "Number of days to retain log events. Default is 30 days"
   type        = number
-  default     = 7
+  default     = 30
 }
 
 variable "cloudwatch_log_group_kms_key_id" {
   description = "If a KMS Key ARN is set, this key will be used to encrypt the corresponding log group. Please be sure that the KMS Key has an appropriate key policy (https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html)"
   type        = string
   default     = null
+}
+
+variable "tags" {
+  description = "A map of tags to add to all resources"
+  type        = map(string)
+  default     = {}
 }

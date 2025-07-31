@@ -27,20 +27,9 @@ output "cluster_autoscaling_capacity_providers" {
   value       = module.ecs.autoscaling_capacity_providers
 }
 
-output "service_iam_role_name" {
-  description = "Service IAM role name"
-  value       = module.ecs.task_exec_iam_role_name
-}
-
-output "service_iam_role_arn" {
-  description = "Service IAM role ARN"
-  value       = module.ecs.task_exec_iam_role_arn
-}
-
-output "service_iam_role_unique_id" {
-  description = "Stable and unique string identifying the service IAM role"
-  value       = module.ecs.task_exec_iam_role_unique_id
-}
+################################################################################
+# Service
+################################################################################
 
 output "service_id" {
   description = "ARN that identifies the service"

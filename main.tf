@@ -1,14 +1,3 @@
-module "labels" {
-  source      = "cypik/labels/aws"
-  version     = "1.0.2"
-  name        = var.name
-  repository  = var.repository
-  environment = var.environment
-  managedby   = var.managedby
-  attributes  = var.attributes
-  label_order = var.label_order
-}
-
 ################################################################################
 # Cluster
 ################################################################################
@@ -17,9 +6,8 @@ module "cluster" {
   source = "./modules/cluster"
 
   enable = var.enable_cluster
-
   # Cluster
-  name                             = module.labels.id
+  name                             = var.name
   cluster_configuration            = var.cluster_configuration
   cluster_settings                 = var.cluster_settings
   cluster_service_connect_defaults = var.cluster_service_connect_defaults
@@ -152,12 +140,12 @@ module "service" {
   task_exec_iam_statements = lookup(each.value, "task_exec_iam_statements", {})
 
   # Tasks - IAM role
-  enable_tasks_iam_role          = try(each.value.enable_tasks_iam_role, true)
-  tasks_iam_role_arn             = lookup(each.value, "tasks_iam_role_arn", null)
-  tasks_iam_role_name            = try(each.value.tasks_iam_role_name, null)
-  tasks_iam_role_use_name_prefix = try(each.value.tasks_iam_role_use_name_prefix, true)
-  tasks_iam_role_path            = try(each.value.tasks_iam_role_path, null)
-  # tasks_iam_role_description          = try(each.value.tasks_iam_role_description, null)
+  enable_tasks_iam_role               = try(each.value.enable_tasks_iam_role, true)
+  tasks_iam_role_arn                  = lookup(each.value, "tasks_iam_role_arn", null)
+  tasks_iam_role_name                 = try(each.value.tasks_iam_role_name, null)
+  tasks_iam_role_use_name_prefix      = try(each.value.tasks_iam_role_use_name_prefix, true)
+  tasks_iam_role_path                 = try(each.value.tasks_iam_role_path, null)
+  tasks_iam_role_description          = try(each.value.tasks_iam_role_description, null)
   tasks_iam_role_permissions_boundary = try(each.value.tasks_iam_role_permissions_boundary, null)
   tasks_iam_role_tags                 = try(each.value.tasks_iam_role_tags, {})
   tasks_iam_role_policies             = lookup(each.value, "tasks_iam_role_policies", {})

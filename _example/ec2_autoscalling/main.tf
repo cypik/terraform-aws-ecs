@@ -2,13 +2,19 @@ provider "aws" {
   region = local.region
 }
 
+data "aws_availability_zones" "available" {}
+
 
 locals {
-  region         = "eu-west-1"
-  name           = "demo2"
+  region         = "eu-west-2"
+  name           = "test-ecs2"
   environment    = "qa"
-  container_name = "demo-container"
+  container_name = "ecs-sample"
   container_port = 80
+  tags = {
+    Name    = local.name
+    Example = local.name
+  }
 }
 
 
@@ -22,15 +28,15 @@ module "vpc" {
 
 
 module "subnets" {
-  source             = "cypik/subnet/aws"
-  version            = "1.0.5"
-  name               = local.name
-  environment        = local.environment
-  availability_zones = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
-  type               = "public"
-  vpc_id             = module.vpc.vpc_id
-  cidr_block         = module.vpc.vpc_cidr_block
-  igw_id             = module.vpc.igw_id
+  source              = "cypik/subnet/aws"
+  version             = "1.0.5"
+  nat_gateway_enabled = true
+  single_nat_gateway  = true
+  availability_zones  = ["eu-west-2a", "eu-west-2b", "eu-west-2c"]
+  vpc_id              = module.vpc.vpc_id
+  type                = "public-private"
+  igw_id              = module.vpc.igw_id
+  cidr_block          = module.vpc.vpc_cidr_block
 }
 
 module "security_group" {
@@ -72,12 +78,11 @@ module "ecs_cluster" {
   source = "../../modules/cluster"
 
   name = local.name
-
   # Capacity provider - autoscaling groups
   default_capacity_provider_use_fargate = false
   autoscaling_capacity_providers = {
     # On-demand instances
-    ex11 = {
+    ex1 = {
       auto_scaling_group_arn         = module.autoscaling["on_demand"].autoscaling_group_arn
       managed_termination_protection = "ENABLED"
 
@@ -93,24 +98,25 @@ module "ecs_cluster" {
         base   = 20
       }
     }
-    # # Spot instances
-    # ex2 = {
-    #   auto_scaling_group_arn         = module.autoscaling["spot"].autoscaling_group_arn
-    #   managed_termination_protection = "ENABLED"
-    #
-    #   managed_scaling = {
-    #     maximum_scaling_step_size = 5
-    #     minimum_scaling_step_size = 1
-    #     status                    = "ENABLED"
-    #     target_capacity           = 90
-    #   }
-    #
-    #   default_capacity_provider_strategy = {
-    #     weight = 40
-    #   }
-    # }
+    # Spot instances
+    ex2 = {
+      auto_scaling_group_arn         = module.autoscaling["spot"].autoscaling_group_arn
+      managed_termination_protection = "ENABLED"
+
+      managed_scaling = {
+        maximum_scaling_step_size = 5
+        minimum_scaling_step_size = 1
+        status                    = "ENABLED"
+        target_capacity           = 90
+      }
+
+      default_capacity_provider_strategy = {
+        weight = 40
+      }
+    }
   }
 
+  tags = local.tags
 }
 
 
@@ -122,12 +128,11 @@ module "ecs_cluster" {
 module "ecs_service" {
   source = "./../.."
 
-  create_cluster = false
   cluster_arn    = module.ecs_cluster.arn
-
+  enable_cluster = false
   ##service1
   services = {
-    ecsdemo97 = {
+    ecsdemo = {
       # Task Definition
       cpu                      = 256
       memory                   = 512
@@ -136,7 +141,7 @@ module "ecs_service" {
       capacity_provider_strategy = {
         # Spot instances
         spot = {
-          capacity_provider = module.ecs_cluster.autoscaling_capacity_providers["ex_1"].name
+          capacity_provider = module.ecs_cluster.autoscaling_capacity_providers["ex2"].name
           weight            = 1
           base              = 1
         }
@@ -150,7 +155,7 @@ module "ecs_service" {
       # Container definition(s)
       container_definitions = {
         (local.container_name) = {
-          image = "httpd:2.4"
+          image = "public.ecr.aws/ecs-sample-image/amazon-ecs-sample:latest"
           port_mappings = [
             {
               name          = local.container_name
@@ -162,11 +167,11 @@ module "ecs_service" {
           mount_points = [
             {
               sourceVolume  = "my-vol",
-              containerPath = "/usr/local/apache2/htdocs/"
+              containerPath = "/var/www/my-vol"
             }
           ]
 
-          entry_point = ["httpd-foreground"]
+          entry_point = ["/usr/sbin/apache2", "-D", "FOREGROUND"]
 
           # Example image used requires access to write to root filesystem
           readonly_root_filesystem = false
@@ -175,46 +180,45 @@ module "ecs_service" {
       }
       load_balancer = {
         service = {
-          target_group_arn = module.lb.target_group_arns[0]
+          target_group_arn = module.alb.target_group_arns[0]
           container_name   = local.container_name
           container_port   = local.container_port
         }
       }
 
-      subnet_ids = module.subnets.public_subnet_id
+      subnet_ids = module.subnets.private_subnet_id
       security_group_rules = {
-        alb_ingress = {
+        alb_ingress_3000 = {
           type                     = "ingress"
           from_port                = local.container_port
           to_port                  = local.container_port
           protocol                 = "tcp"
           description              = "Service port"
-          source_security_group_id = module.lb.security_group_id
+          source_security_group_id = module.alb.security_group_id
         }
       }
     },
   }
 
+  tags = local.tags
 }
 
 
-# ################################################################################
-# # Supporting Resources
-# ################################################################################
+################################################################################
+# Supporting Resources
+################################################################################
 
-# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-optimized_AMI.html#ecs-optimized-ami-linux
 data "aws_ssm_parameter" "ecs_optimized_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended"
 }
 
-
 module "autoscaling" {
-  source = "cypik/ec2-autoscaling/aws"
-
+  source  = "cypik/ec2-autoscaling/aws"
+  version = "v1.0.1"
   for_each = {
     # On-demand instances
     on_demand = {
-      instance_type              = "t3.medium"
+      instance_type              = "t2.micro"
       use_mixed_instances_policy = false
       mixed_instances_policy     = {}
       user_data                  = <<-EOT
@@ -223,49 +227,49 @@ module "autoscaling" {
         cat <<'EOF' >> /etc/ecs/ecs.config
         ECS_CLUSTER=${local.name}
         ECS_LOGLEVEL=debug
-        ECS_CONTAINER_INSTANCE_TAGS=${jsonencode(local.name)}
+        ECS_CONTAINER_INSTANCE_TAGS=${jsonencode(local.tags)}
         ECS_ENABLE_TASK_IAM_ROLE=true
         EOF
       EOT
     }
     # Spot instances
-    # spot = {
-    #   instance_type              = "t2.medium"
-    #   use_mixed_instances_policy = true
-    #   mixed_instances_policy = {
-    #     instances_distribution = {
-    #       on_demand_base_capacity                  = 0
-    #       on_demand_percentage_above_base_capacity = 0
-    #       spot_allocation_strategy                 = "price-capacity-optimized"
-    #     }
-    #
-    #     override = [
-    #       {
-    #         instance_type     = "t3.medium"
-    #         weighted_capacity = "1"
-    #       },
-    #     ]
-    #   }
-    #   user_data = <<-EOT
-    #     #!/bin/bash
-    #
-    #     cat <<'EOF' >> /etc/ecs/ecs.config
-    #     ECS_CLUSTER=${local.name}
-    #     ECS_LOGLEVEL=debug
-    #     ECS_CONTAINER_INSTANCE_TAGS=${jsonencode(local.name)}
-    #     ECS_ENABLE_TASK_IAM_ROLE=true
-    #     ECS_ENABLE_SPOT_INSTANCE_DRAINING=true
-    #     EOF
-    #   EOT
-    # }
+    spot = {
+      instance_type              = "t2.micro"
+      use_mixed_instances_policy = true
+      mixed_instances_policy = {
+        instances_distribution = {
+          on_demand_base_capacity                  = 0
+          on_demand_percentage_above_base_capacity = 0
+          spot_allocation_strategy                 = "price-capacity-optimized"
+        }
+
+        override = [
+          {
+            instance_type     = "t3.medium"
+            weighted_capacity = "1"
+          },
+        ]
+      }
+      user_data = <<-EOT
+        #!/bin/bash
+
+        cat <<'EOF' >> /etc/ecs/ecs.config
+        ECS_CLUSTER=${local.name}
+        ECS_LOGLEVEL=debug
+        ECS_CONTAINER_INSTANCE_TAGS=${jsonencode(local.tags)}
+        ECS_ENABLE_TASK_IAM_ROLE=true
+        ECS_ENABLE_SPOT_INSTANCE_DRAINING=true
+        EOF
+      EOT
+    }
   }
 
-  network_interfaces = [
-    {
-      associate_public_ip_address = true                               # Assign public IP
-      subnet_id                   = module.subnets.public_subnet_id[0] # Assign to a public subnet
-    }
-  ]
+  #  network_interfaces = [
+  #    {
+  #      associate_public_ip_address = true                               # Assign public IP
+  #      subnet_id                   = module.subnets.public_subnet_id[0] # Assign to a public subnet
+  #    }
+  #  ]
   name = "${local.name}-${each.key}"
 
   image_id      = jsondecode(data.aws_ssm_parameter.ecs_optimized_ami.value)["image_id"]
@@ -275,15 +279,14 @@ module "autoscaling" {
   user_data                       = base64encode(each.value.user_data)
   ignore_desired_capacity_changes = true
 
-  create_iam_instance_profile = true
-  iam_role_name               = local.name
-  iam_role_description        = "ECS role for ${local.name}"
+  iam_role_name        = local.name
+  iam_role_description = "ECS role for ${local.name}"
   iam_role_policies = {
     AmazonEC2ContainerServiceforEC2Role = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
     AmazonSSMManagedInstanceCore        = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   }
 
-  vpc_zone_identifier = module.subnets.public_subnet_id
+  vpc_zone_identifier = module.subnets.private_subnet_id
   health_check_type   = "EC2"
   min_size            = 1
   max_size            = 2
@@ -301,12 +304,12 @@ module "autoscaling" {
   use_mixed_instances_policy = each.value.use_mixed_instances_policy
   mixed_instances_policy     = each.value.mixed_instances_policy
 
-  # tags = local.tags
+  tags = local.tags
 }
 
-module "lb" {
+module "alb" {
   source  = "cypik/lb/aws"
-  version = "v1.0.4"
+  version = "1.0.4"
   name    = "${local.name}-lb"
 
   load_balancer_type = "application"
@@ -334,12 +337,6 @@ module "lb" {
   #      target_group_index = 0
   #      certificate_arn    = ""
   #    },
-  ##    {
-  ##      port               = 84
-  ##      protocol           = "TLS"
-  ##      target_group_index = 0
-  ##      certificate_arn    = ""
-  ##    },
   #  ]
 
   target_groups = [
@@ -361,7 +358,7 @@ module "lb" {
         matcher             = "200-399"
       }
 
-
     }
   ]
+
 }
