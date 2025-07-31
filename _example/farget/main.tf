@@ -2,9 +2,6 @@ provider "aws" {
   region = local.region
 }
 
-data "aws_availability_zones" "available" {}
-
-
 locals {
   region         = "eu-west-1"
   name           = "test-ecs"

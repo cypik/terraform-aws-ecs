@@ -1,44 +1,7 @@
 variable "name" {
-  type        = string
-  default     = ""
   description = "Name  (e.g. `app` or `cluster`)."
-}
-
-variable "repository" {
-  type        = string
-  default     = "https://github.com/cypik/terraform-aws-ecs"
-  description = "Terraform current module repo"
-}
-
-variable "environment" {
   type        = string
   default     = ""
-  description = "Environment (e.g. `prod`, `dev`, `staging`)."
-}
-
-variable "label_order" {
-  type        = list(any)
-  default     = ["name", "environment"]
-  description = "Label order, e.g. `name`,`application`."
-}
-
-variable "attributes" {
-  type        = list(any)
-  default     = []
-  description = "Additional attributes (e.g. `1`)."
-}
-
-variable "managedby" {
-  type        = string
-  default     = "hello@cypik.com"
-  description = "ManagedBy, eg 'cypik'."
-}
-
-
-variable "create" {
-  description = "Determines whether resources will be created (affects all resources)"
-  type        = bool
-  default     = true
 }
 
 variable "enable" {
@@ -46,7 +9,6 @@ variable "enable" {
   type        = bool
   default     = true
 }
-
 
 variable "tags" {
   description = "A map of tags to add to all resources"
@@ -62,12 +24,6 @@ variable "enable_cluster" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
   default     = true
-}
-
-variable "cluster_name" {
-  description = "Name of the cluster (up to 255 letters, numbers, hyphens, and underscores)"
-  type        = string
-  default     = ""
 }
 
 variable "cluster_configuration" {

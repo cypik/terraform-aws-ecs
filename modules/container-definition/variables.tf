@@ -292,18 +292,6 @@ variable "enable_cloudwatch_log_group" {
   default     = true
 }
 
-variable "cloudwatch_log_group_name" {
-  description = "Custom name of CloudWatch log group for a service associated with the container definition"
-  type        = string
-  default     = null
-}
-
-variable "cloudwatch_log_group_use_name_prefix" {
-  description = "Determines whether the log group name should be used as a prefix"
-  type        = bool
-  default     = false
-}
-
 variable "cloudwatch_log_group_retention_in_days" {
   description = "Number of days to retain log events. Default is 30 days"
   type        = number

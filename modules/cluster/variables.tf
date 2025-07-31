@@ -1,34 +1,3 @@
-variable "repository" {
-  type        = string
-  default     = "https://github.com/cypik/terraform-aws-ecs"
-  description = "Terraform current module repo"
-}
-
-variable "environment" {
-  type        = string
-  default     = ""
-  description = "Environment (e.g. `prod`, `dev`, `staging`)."
-}
-
-variable "label_order" {
-  type        = list(any)
-  default     = ["name", "environment"]
-  description = "Label order, e.g. `name`,`application`."
-}
-
-variable "attributes" {
-  type        = list(any)
-  default     = []
-  description = "Additional attributes (e.g. `1`)."
-}
-
-variable "managedby" {
-  type        = string
-  default     = "hello@cypik.com"
-  description = "ManagedBy, eg 'cypik'."
-}
-
-
 variable "enable" {
   description = "Determines whether resources will be created (affects all resources)"
   type        = bool
