@@ -16,7 +16,7 @@ locals {
 
 module "vpc" {
   source      = "cypik/vpc/aws"
-  version     = "1.0.3"
+  version     = "1.0.5"
   name        = local.name
   environment = local.environment
   cidr_block  = "10.0.0.0/16"
@@ -25,7 +25,7 @@ module "vpc" {
 
 module "subnets" {
   source             = "cypik/subnet/aws"
-  version            = "1.0.5"
+  version            = "1.0.7"
   name               = local.name
   environment        = local.environment
   availability_zones = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
@@ -37,7 +37,7 @@ module "subnets" {
 
 module "security_group" {
   source      = "cypik/security-group/aws"
-  version     = "1.0.3"
+  version     = "1.0.4"
   name        = local.name
   environment = local.environment
   vpc_id      = module.vpc.vpc_id
@@ -152,7 +152,7 @@ module "ecs" {
 
 module "alb" {
   source  = "cypik/lb/aws"
-  version = "1.0.4"
+  version = "1.0.6"
   name    = "${local.name}-lb"
 
   load_balancer_type = "application"

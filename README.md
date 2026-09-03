@@ -23,7 +23,7 @@ To use this module, you should have Terraform installed and configured for AWS. 
 
 module "ecs_cluster" {
   source                 = "cypik/ecs/aws"
-  version                = "1.0.0"
+  version                = "1.0.1"
   name                   = local.name
   # Capacity provider - autoscaling groups
   default_capacity_provider_use_fargate = false
@@ -74,7 +74,7 @@ module "ecs_cluster" {
 
 module "ecs_service" {
   source         = "cypik/ecs/aws"
-  version        = "1.0.0"
+  version        = "1.0.1"
   cluster_arn    = module.ecs_cluster.arn
   enable_cluster = false
   ##service1
@@ -158,7 +158,7 @@ module "ecs_service" {
 ```hcl
 module "ecs" {
   source                 = "cypik/ecs/aws"
-  version                = "1.0.0"
+  version                = "1.0.1"
   name                   = local.name
   # Capacity provider
   fargate_capacity_providers = {
@@ -245,7 +245,7 @@ module "ecs" {
 ```hcl
 module "ecs" {
   source                 = "cypik/ecs/aws"
-  version                = "1.0.0"
+  version                = "1.0.1"
   name                   = local.name
   # Capacity provider
   fargate_capacity_providers = {
@@ -339,8 +339,8 @@ This project is licensed under the **MIT** License - see the [LICENSE](https://g
 
 | Name | Version |
 |------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.12.2 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.6.0 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15.8 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.58.0 |
 
 ## Providers
 

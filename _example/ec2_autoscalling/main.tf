@@ -17,7 +17,7 @@ locals {
 
 module "vpc" {
   source      = "cypik/vpc/aws"
-  version     = "1.0.3"
+  version     = "1.0.5"
   name        = local.name
   environment = local.environment
   cidr_block  = "10.0.0.0/16"
@@ -26,7 +26,7 @@ module "vpc" {
 
 module "subnets" {
   source              = "cypik/subnet/aws"
-  version             = "1.0.5"
+  version             = "1.0.7"
   nat_gateway_enabled = true
   single_nat_gateway  = true
   availability_zones  = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
@@ -38,7 +38,7 @@ module "subnets" {
 
 module "security_group" {
   source      = "cypik/security-group/aws"
-  version     = "1.0.3"
+  version     = "1.0.4"
   name        = local.name
   environment = local.environment
   vpc_id      = module.vpc.vpc_id
@@ -211,7 +211,7 @@ data "aws_ssm_parameter" "ecs_optimized_ami" {
 
 module "autoscaling" {
   source  = "cypik/ec2-autoscaling/aws"
-  version = "v1.0.1"
+  version = "1.0.2"
   for_each = {
     # On-demand instances
     on_demand = {
@@ -276,7 +276,6 @@ module "autoscaling" {
   user_data                       = base64encode(each.value.user_data)
   ignore_desired_capacity_changes = true
 
-  iam_role_name        = local.name
   iam_role_description = "ECS role for ${local.name}"
   iam_role_policies = {
     AmazonEC2ContainerServiceforEC2Role = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
@@ -306,7 +305,7 @@ module "autoscaling" {
 
 module "alb" {
   source  = "cypik/lb/aws"
-  version = "1.0.4"
+  version = "1.0.6"
   name    = "${local.name}-lb"
 
   load_balancer_type = "application"
