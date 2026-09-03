@@ -211,7 +211,7 @@ data "aws_ssm_parameter" "ecs_optimized_ami" {
 
 module "autoscaling" {
   source  = "cypik/ec2-autoscaling/aws"
-  version = "v1.0.2"
+  version = "1.0.2"
   for_each = {
     # On-demand instances
     on_demand = {
